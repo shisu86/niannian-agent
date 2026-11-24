@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>念念 · UI Preview</title>
+<style>
+  :root{
+    --bg:#F3EEE7; --paper:#FBF8F3; --card:#FFFFFF;
+    --ink:#2E2925; --muted:#8B8177; --line:#E9E1D6; --line2:#EFE8DE;
+    --accent:#C96F4A; --accent-soft:#F8E7DE; --accent-ink:#A8512F;
+    --green:#5D7A64; --gold:#B08A4F; --violet:#9B6A8F; --red:#C2543F; --blue:#7B8E9E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink); overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  .screen{display:none;width:1440px;height:900px;overflow:hidden}
+  .screen.active{display:block}
+  .serif{font-family:Georgia,"Songti SC","SimSun",serif}
+  .muted{color:var(--muted)}
+  .tiny{font-size:11px}
+  .small{font-size:12px}
+  .chip{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:4px 9px;border-radius:999px;font-size:11px;line-height:1.4;
+    background:#F4EEE5;color:#6E655B;border:1px solid #EAE2D6;
+  }
+  .chip.accent{background:var(--accent-soft);color:var(--accent-ink);border-color:#F0D3C3}
+  .ai-badge{
+    display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;background:#F1EAE0;color:#8B8177;
+    border:1px solid #E4D9CB;font-weight:400;letter-spacing:.5px;margin-left:5px;vertical-align:1px;
+  }
+  .dev-toggle{
+    margin-top:14px;display:flex;align-items:center;justify-content:space-between;
+    padding:9px 11px;border:1px dashed #E0D5C6;border-radius:10px;font-size:10.5px;
+    color:#8B8177;background:#FCFAF6;
+  }
+  .dev-toggle span{color:#B3A99C;font-size:9.5px}
+
+  /* ============ 通用左栏 ============ */
+  .side{
+    width:264px;border-right:1px solid var(--line);background:var(--paper);
+    display:flex;flex-direction:column;padding:20px 14px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
+  .logo{
+    width:38px;height:38px;border-radius:13px;background:var(--accent);color:#fff;
+    display:grid;place-items:center;font-size:20px;box-shadow:0 6px 16px rgba(201,111,74,.28);
+  }
+  .brand h1{font-size:19px;font-weight:600;letter-spacing:2px}
+  .brand p{font-size:10.5px;color:var(--muted);letter-spacing:.5px;margin-top:2px}
+  .search{
+    margin:0 2px 14px;padding:8px 11px;border:1px solid var(--line);border-radius:10px;
+    background:#F6F1EA;color:#A79D92;font-size:12px;
+  }
+  .group-label{font-size:10.5px;color:#A79D92;letter-spacing:1.5px;padding:10px 10px 6px}
+  .conv{
+    display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;
+    font-size:13px;color:#5F574E;
+  }
+  .conv.active{background:#F0E6D9}
+  .conv .av{
+    width:32px;height:32px;border-radius:10px;background:#EADCCB;color:#8A6A4C;
+    display:grid;place-items:center;font-size:13px;font-weight:600;flex:none;
+  }
+  .conv .meta{flex:1;min-width:0}
+  .conv .meta b{display:block;font-weight:600;font-size:13px;color:var(--ink)}
+  .conv .meta span{font-size:11px;color:#A79D92}
+  .conv .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+  .side-foot{margin-top:auto;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  .side-foot .row{display:flex;align-items:center;gap:9px}
+  .side-foot .av{width:34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-size:13px;font-weight:600}
+  .side-foot b{font-size:12.5px;display:block}
+  .side-foot span{font-size:10.5px;color:var(--muted)}
+  .side-foot .edit{margin-left:auto;color:var(--accent);font-size:11px}
+
+  /* ============ 聊天页 ============ */
+  #chat .app{display:grid;grid-template-columns:264px 1fr 338px;height:900px}
+  .chat-main{display:flex;flex-direction:column;background:#FDFBF8;min-width:0}
+  .topbar{
+    height:64px;border-bottom:1px solid var(--line2);display:flex;align-items:center;
+    justify-content:space-between;padding:0 22px;flex:none;background:#FDFBF8;
+  }
+  .who{display:flex;align-items:center;gap:11px}
+  .who .av{width:38px;height:38px;border-radius:50%;background:linear-gradient(145deg,#EFD8C8,#E2BFA5);color:#8A5A3B;display:grid;place-items:center;font-size:14px;font-weight:600}
+  .who b{font-size:15px}
+  .who > div > span{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+  .top-actions{display:flex;align-items:center;gap:8px}
+  .pill-btn{padding:6px 11px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:11.5px;color:#6E655B}
+  .icon-btn{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;display:grid;place-items:center;background:#fff;color:#8B8177;font-size:13px}
+  .messages{flex:1;padding:20px 34px 8px;overflow:hidden}
+  .day{display:flex;align-items:center;gap:12px;margin:4px 0 18px;color:#ADA396;font-size:10.5px;letter-spacing:1px}
+  .day:before,.day:after{content:"";flex:1;height:1px;background:var(--line2)}
+  .msg{display:flex;gap:9px;max-width:600px;margin-bottom:6px}
+  .msg .av{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11px;font-weight:600;background:linear-gradient(145deg,#EFD8C8,#E2BFA5);color:#8A5A3B;margin-top:2px}
+  .bubble{padding:11px 14px;font-size:13.5px;line-height:1.75;letter-spacing:.2px;border-radius:4px 14px 14px 14px;background:#fff;border:1px solid var(--line2);box-shadow:0 2px 10px rgba(46,41,37,.035)}
+  .msg.me{flex-direction:row-reverse;margin-left:auto}
+  .msg.me .bubble{background:var(--accent);color:#fff;border:none;border-radius:14px 4px 14px 14px;box-shadow:0 6px 16px rgba(201,111,74,.18)}
+  .msg.me .av{background:#E8DCCF;color:#8A6A4C}
+  .msg-meta{font-size:10px;color:#B3A99C;margin:4px 0 16px 37px;display:flex;gap:8px;align-items:center}
+  .msg.me + .msg-meta{margin-left:auto;margin-right:37px;justify-content:flex-end}
+  .msg.proactive .bubble{border-style:dashed;border-color:#E4C9B8;background:#FFFDFA}
+  .memory-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .memory-chips .chip{font-size:10px;padding:3px 8px;background:#F7F1E8;border-color:#EDE3D4;color:#8A7663}
+  .caret{display:inline-block;width:2px;height:14px;background:var(--accent);vertical-align:-2px;margin-left:2px;opacity:.7}
+  .composer{margin:8px 24px 18px;background:#fff;border:1px solid #E4DACE;border-radius:16px;padding:10px 12px;box-shadow:0 10px 28px rgba(46,41,37,.07);flex:none}
+  .composer .field{display:flex;align-items:center;gap:10px;padding:2px 2px 8px}
+  .composer .field input{border:none;outline:none;flex:1;font-size:13px;color:var(--ink);background:transparent}
+  .composer .field input::placeholder{color:#B6ACA0}
+  .mic{width:32px;height:32px;border-radius:50%;background:#F6EFE6;color:var(--accent-ink);display:grid;place-items:center;font-size:14px}
+  .composer .foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #F1EAE0;padding-top:8px}
+  .composer .foot .left{display:flex;gap:6px;align-items:center}
+  .send{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:7px 16px;font-size:12px;letter-spacing:1px;box-shadow:0 4px 12px rgba(201,111,74,.25)}
+
+  /* 右侧可解释栏 */
+  .sidepanel{border-left:1px solid var(--line);background:var(--paper);padding:18px 16px;overflow:hidden}
+  .panel-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+  .panel-head h3{font-size:13.5px;letter-spacing:.5px}
+  .panel-head span{font-size:10px;color:#A79D92}
+  .panel-sub{font-size:10.5px;color:var(--muted);margin-bottom:14px}
+  .flow{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+  .flow .node{font-size:10px;padding:4px 8px;border-radius:7px;background:#fff;border:1px solid var(--line);color:#6E655B}
+  .flow .node.hot{background:var(--accent-soft);border-color:#EFD2C2;color:var(--accent-ink);font-weight:600}
+  .flow .arr{color:#C9BEB0;font-size:10px}
+  .panel-note{font-size:10px;color:#A79D92;margin-bottom:16px;line-height:1.6}
+  .sec-label{font-size:10px;letter-spacing:1.5px;color:#A79D92;margin:0 0 8px}
+  .mem-card{background:#fff;border:1px solid var(--line2);border-radius:11px;padding:9px 10px;margin-bottom:7px}
+  .mem-card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+  .mem-card .txt{font-size:11.5px;color:#4E463E;line-height:1.55}
+  .mem-card .score{font-size:10px;color:#A79D92;font-family:Georgia,serif}
+  .t{font-size:9.5px;padding:2px 7px;border-radius:5px;font-weight:600;letter-spacing:.5px}
+  .t.fact{background:#EAF0EA;color:var(--green)}
+  .t.pref{background:#F8E7DE;color:var(--accent-ink)}
+  .t.event{background:#F5EEE1;color:var(--gold)}
+  .t.rel{background:#F2E9F0;color:var(--violet)}
+  .t.follow{background:#F9E4DF;color:var(--red)}
+  .t.sum{background:#EAF0F3;color:var(--blue)}
+  .budget{margin-top:16px}
+  .bar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:#EFE8DE;margin:7px 0 5px}
+  .bar i{display:block;height:100%}
+  .bar .b1{background:#D9B38C;width:13%}
+  .bar .b2{background:#C96F4A;width:22%}
+  .bar .b3{background:#A8B5A9;width:39%}
+  .budget .legend{display:flex;justify-content:space-between;font-size:9.5px;color:#A79D92}
+  .persona-snap{margin-top:16px;background:#fff;border:1px solid var(--line2);border-radius:12px;padding:11px 12px}
+  .persona-snap .row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .persona-snap .av{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-size:11px;font-weight:600}
+  .persona-snap b{font-size:12px}
+  .persona-snap span{font-size:10px;color:var(--muted)}
+  .persona-snap p{font-size:10.5px;color:#6E655B;line-height:1.7;margin-top:5px}
+
+  /* ============ 人设塑造页 ============ */
+  #persona{background:var(--bg)}
+  .page-head{height:66px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid var(--line);background:var(--paper)}
+  .steps{display:flex;align-items:center;gap:8px}
+  .step{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#A79D92}
+  .step .n{width:20px;height:20px;border-radius:50%;border:1px solid #DCD2C5;display:grid;place-items:center;font-size:10px;font-family:Georgia,serif}
+  .step.done .n{background:#EFE5D7;border-color:#E3D4C2;color:#8A6A4C}
+  .step.now{color:var(--accent-ink);font-weight:600}
+  .step.now .n{background:var(--accent);border-color:var(--accent);color:#fff}
+  .step-line{width:26px;height:1px;background:#E3D9CC}
+  .persona-body{display:grid;grid-template-columns:1fr 372px;height:834px}
+  .convo-panel{padding:22px 30px;border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .hint{display:flex;align-items:center;gap:9px;background:#FFF9EF;border:1px solid #F0E3CB;border-radius:10px;padding:9px 12px;font-size:11.5px;color:#8B7550;margin-bottom:14px;flex:none}
+  .hint b{color:#7A5F33}
+  .convo{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:0;padding-right:6px}
+  .line{display:flex;margin-bottom:9px;max-width:78%;width:fit-content}
+  .line .b{padding:9px 13px;border-radius:4px 13px 13px 13px;background:#fff;border:1px solid var(--line2);font-size:13px;line-height:1.7;color:#3E3831;position:relative}
+  .line.target{align-self:flex-end;flex-direction:row-reverse}
+  .line.target .b{background:linear-gradient(180deg,#FFF6E8 0%,#FDEFD5 55%,#FBE6BE 55%,#FBE6BE 100%);border-color:#EED9B0;border-radius:13px 4px 13px 13px}
+  .line .tag{position:absolute;top:-8px;left:10px;font-size:9px;padding:1px 6px;border-radius:4px;background:#D9A441;color:#fff;letter-spacing:.5px;box-shadow:0 2px 6px rgba(217,164,65,.3)}
+  .line .ava{width:26px;height:26px;border-radius:50%;flex:none;margin-right:7px;display:grid;place-items:center;font-size:10px;background:#E8DCCF;color:#8A6A4C}
+  .line.target .ava{margin-right:0;margin-left:7px;background:var(--accent-soft);color:var(--accent-ink)}
+  .speaker{font-size:10px;color:#A79D92;margin-bottom:3px}
+  .line-wrap{margin-bottom:10px;width:100%;display:flex;flex-direction:column;align-items:flex-start}
+  .line-wrap.target{align-items:flex-end}
+  .right-panel{padding:22px 22px;background:var(--paper);display:flex;flex-direction:column;gap:14px}
+  .stat-row{display:flex;gap:10px}
+  .stat{flex:1;background:#fff;border:1px solid var(--line2);border-radius:12px;padding:11px 13px}
+  .stat b{font-size:20px;font-family:Georgia,serif;display:block;line-height:1.1}
+  .stat span{font-size:10px;color:var(--muted);letter-spacing:.5px}
+  .right-panel h4{font-size:12px;margin-bottom:7px}
+  .tip-list{font-size:11.5px;color:#6E655B;line-height:1.9}
+  .tip-list li{margin-left:15px}
+  .arrow-btn{
+    margin-top:auto;display:flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--accent);color:#fff;border:none;border-radius:13px;padding:13px;font-size:13px;
+    letter-spacing:1px;box-shadow:0 10px 24px rgba(201,111,74,.28);
+  }
+  .foot-note{font-size:10px;color:#A79D92;text-align:center;margin-top:9px}
+
+  /* ============ 人设确认页 ============ */
+  #confirm{position:relative;background:#EDE7DE}
+  .blur-bg{position:absolute;inset:0;filter:blur(7px) saturate(.85);opacity:.8;display:grid;grid-template-columns:264px 1fr 338px}
+  .blur-bg .blk{background:#FDFBF8;border-right:1px solid var(--line)}
+  .blur-bg .blk.mid{background:#FDFBF8;border:none}
+  .blur-bg .blk.right{background:var(--paper);border-left:1px solid var(--line);border-right:none}
+  .fake-msg{height:38px;border-radius:12px;background:#fff;margin:16px 40px;border:1px solid var(--line2)}
+  .fake-msg.short{width:55%;margin-left:auto;background:var(--accent-soft);border:none}
+  .scrim{position:absolute;inset:0;background:rgba(58,50,42,.18)}
+  .modal{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:560px;background:#fff;border-radius:20px;box-shadow:0 30px 80px rgba(40,32,25,.22);
+    overflow:hidden;
+  }
+  .modal-top{padding:22px 26px 16px;border-bottom:1px solid var(--line2);background:linear-gradient(180deg,#FFFDF9,#fff)}
+  .interrupt-badge{display:inline-flex;align-items:center;gap:6px;font-size:10px;letter-spacing:1px;color:#A8813F;background:#FCF4E2;border:1px solid #F0E0BC;padding:4px 9px;border-radius:999px;margin-bottom:10px}
+  .modal-top h2{font-size:20px;letter-spacing:.5px;margin-bottom:5px}
+  .modal-top p{font-size:12px;color:var(--muted);line-height:1.6}
+  .modal-body{padding:18px 26px}
+  .form-row{display:flex;gap:12px;margin-bottom:12px}
+  .field-box{flex:1}
+  .field-box label{display:block;font-size:10.5px;color:#A79D92;letter-spacing:1px;margin-bottom:5px}
+  .field-box .val{border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;background:#FCFAF6}
+  .field-box .val i{font-style:normal;color:var(--ink)}
+  .chip-cloud{display:flex;flex-wrap:wrap;gap:6px}
+  .chip-cloud .chip{font-size:11.5px;padding:5px 10px;background:#FBF6EF;border-color:#EDE3D4;color:#5E554B}
+  .chip-cloud .chip .x{color:#B7AC9E;margin-left:2px}
+  .chip-cloud .chip.add{background:#fff;border-style:dashed;color:#A79D92}
+  .prompt-box{margin-top:4px;background:#FAF7F2;border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-size:11px;color:#7A7167;line-height:1.7}
+  .prompt-box .head{display:flex;justify-content:space-between;color:#A79D92;margin-bottom:4px}
+  .modal-foot{display:flex;align-items:center;justify-content:space-between;padding:15px 26px 20px;border-top:1px solid var(--line2)}
+  .btn-ghost{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 16px;font-size:12px;color:#6E655B}
+  .btn-main{background:var(--accent);border:none;border-radius:10px;padding:10px 20px;font-size:12.5px;color:#fff;letter-spacing:1px;box-shadow:0 8px 20px rgba(201,111,74,.26)}
+  .modal-foot .note{font-size:10px;color:#A79D92}
+
+  /* ============ 记忆管理页 ============ */
+  #memory .app{display:grid;grid-template-columns:264px 1fr 276px;height:900px}
+  .mem-main{background:#FDFBF8;padding:26px 30px;overflow:hidden;min-width:0}
+  .mem-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+  .mem-head h2{font-size:22px;letter-spacing:1px}
+  .mem-head p{font-size:11.5px;color:var(--muted);margin-top:5px}
+  .filters{display:flex;gap:7px;margin-bottom:14px}
+  .filter{font-size:11.5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;color:#6E655B}
+  .filter.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .filter .num{opacity:.7;margin-left:4px;font-family:Georgia,serif}
+  .mem-list{display:flex;flex-direction:column;gap:8px}
+  .mem-row{display:grid;grid-template-columns:64px 1fr 76px 92px 64px 74px;gap:10px;align-items:center;background:#fff;border:1px solid var(--line2);border-radius:12px;padding:11px 13px}
+  .mem-row .body{font-size:12.5px;color:#3E3831;line-height:1.5}
+  .mem-row .body small{display:block;font-size:10px;color:#A79D92;margin-top:2px}
+  .stars{font-size:10px;color:#D9A441;letter-spacing:1px}
+  .date{font-size:10.5px;color:#A79D92;font-family:Georgia,serif}
+  .status{font-size:10px;color:var(--green)}
+  .status.sup{color:#B5AA9C}
+  .ops{font-size:11px;color:#A79D92;text-align:right}
+  .mem-row.superseded{background:#FAF7F2;border-style:dashed}
+  .mem-row.superseded .body{color:#A79D92;text-decoration:line-through;text-decoration-color:#D8CCBC}
+  .right-sum{padding:22px 18px;background:var(--paper);border-left:1px solid var(--line)}
+  .sum-card{background:#fff;border:1px solid var(--line2);border-radius:13px;padding:13px 14px;margin-bottom:10px}
+  .sum-card b{font-family:Georgia,serif;font-size:22px;display:block;line-height:1.2}
+  .sum-card span{font-size:10.5px;color:var(--muted)}
+  .sum-card p{font-size:10.5px;color:#8B8177;line-height:1.7;margin-top:5px}
+  .health{display:flex;align-items:center;gap:10px;margin:6px 0 12px}
+  .ring{width:62px;height:62px;border-radius:50%;background:conic-gradient(var(--accent) 0 78%, #EFE8DE 78% 100%);display:grid;place-items:center;flex:none}
+  .ring i{width:46px;height:46px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:13px;font-family:Georgia,serif;font-style:normal}
+  .health p{font-size:10.5px;color:#8B8177;line-height:1.6}
+
+  .watermark{position:absolute;right:18px;bottom:14px;font-size:9.5px;letter-spacing:2px;color:#C4B9AA;font-family:Georgia,serif}
+
+  /* ============ 设置页 / 安全分支 ============ */
+  #settings .app{display:grid;grid-template-columns:264px 1fr 276px;height:900px}
+  #safety .app{display:grid;grid-template-columns:264px 1fr 338px;height:900px}
+  .set-main{background:#FDFBF8;padding:26px 30px;overflow:hidden}
+  .set-card{background:#fff;border:1px solid var(--line2);border-radius:14px;padding:15px 18px;margin-bottom:11px}
+  .set-card h4{font-size:13px;margin-bottom:3px}
+  .set-card .desc{font-size:10.5px;color:var(--muted);margin-bottom:8px;line-height:1.6}
+  .set-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid #F4EEE5;font-size:12px;color:#4E463E}
+  .set-row:first-of-type{border-top:none}
+  .set-row .r{color:#A79D92;font-size:11px}
+  .switch{width:34px;height:20px;border-radius:99px;background:var(--accent);position:relative;flex:none}
+  .switch:after{content:"";position:absolute;right:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff}
+  .voice-opt{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border:1px solid var(--line);border-radius:10px;font-size:11.5px;margin-right:6px;color:#6E655B;background:#fff}
+  .voice-opt.on{background:var(--accent-soft);border-color:#EFD2C2;color:var(--accent-ink);font-weight:600}
+  .safety-card{max-width:620px;background:#FFF9F3;border:1px solid #EED9C4;border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.8;color:#4E463E;margin:6px 0 12px}
+  .safety-card .st{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px;color:#8B5A3B}
+  .help-lines{margin-top:10px;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.9;color:#6E655B}
+  .help-lines b{color:var(--ink)}
+  .safety-actions{display:flex;gap:8px;margin-top:12px}
+
+  /* ============ 待跟进 / 人设管理 ============ */
+  #followups .app,#persona-manage .app{display:grid;grid-template-columns:264px 1fr 276px;height:900px}
+  .fu-row{display:grid;grid-template-columns:56px 1fr 120px 74px;gap:14px;align-items:center;background:#fff;border:1px solid var(--line2);border-radius:12px;padding:12px 14px;margin-bottom:8px}
+  .fu-date{text-align:center;font-family:Georgia,serif;color:#8B8177}
+  .fu-date b{display:block;font-size:18px;color:var(--ink);line-height:1.2}
+  .fu-date span{font-size:9.5px}
+  .fu-body b{font-size:12.5px;display:block}
+  .fu-body small{font-size:10px;color:#A79D92;display:block;margin-top:3px}
+  .fu-status{font-size:10.5px;color:#A79D92;text-align:center}
+  .fu-status.soon{color:#B08A4F}
+  .fu-status.over{color:#C2543F}
+  .fu-status.done{color:var(--green)}
+  .fu-ops{text-align:right;font-size:11px;color:#A79D92}
+  .fu-row.done{background:#FAF7F2}
+  .fu-row.done .fu-body b{text-decoration:line-through;color:#A79D92;text-decoration-color:#D8CCBC}
+  .persona-hero{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--line2);border-radius:16px;padding:20px;margin-bottom:12px}
+  .persona-hero .big-av{width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#EFD8C8,#E2BFA5);color:#8A5A3B;display:grid;place-items:center;font-size:22px;font-weight:600;flex:none}
+  .persona-hero h2{font-size:20px;letter-spacing:1px}
+  .persona-hero p{font-size:11px;color:var(--muted);margin-top:4px}
+  .p-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .panel-block{background:#fff;border:1px solid var(--line2);border-radius:14px;padding:14px 16px;margin-bottom:10px}
+  .panel-block h4{font-size:12.5px;margin-bottom:7px}
+  .prompt-preview{background:#FAF7F2;border-radius:9px;padding:9px 11px;font-size:11px;color:#7A7167;line-height:1.7}
+  .version-item{display:flex;gap:10px;padding:8px 0;border-top:1px solid #F4EEE5;font-size:11.5px}
+  .version-item:first-of-type{border-top:none}
+  .version-item .v{font-family:Georgia,serif;color:#8B8177;width:24px;flex:none}
+  .version-item small{display:block;color:#A79D92;font-size:10px;margin-top:2px}
+
+  /* ============ 移动端 ============ */
+  #mobile.screen{width:390px;height:844px;background:#FDFBF8}
+  .m-app{width:390px;height:844px;display:flex;flex-direction:column;background:#FDFBF8;position:relative}
+  .m-status{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:10.5px;color:#7A7167}
+  .m-head{height:58px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid #EDE6DC}
+  .m-back{font-size:24px;color:#A79D92;width:18px;line-height:1}
+  .m-who{flex:1;text-align:center}
+  .m-who b{font-size:15px;display:block}
+  .m-who span{font-size:9.5px;color:#A79D92}
+  .m-menu{font-size:20px;color:#A79D92;width:18px;text-align:right}
+  .m-msgs{flex:1;padding:14px 14px 6px;overflow:hidden}
+  .m-msg{display:flex;margin-bottom:9px}
+  .m-msg .bubble{max-width:84%;font-size:13.5px;line-height:1.7;padding:10px 12px;border-radius:4px 14px 14px 14px;background:#fff;border:1px solid #EFE8DE;color:#2E2925;box-shadow:0 2px 8px rgba(46,41,37,.03)}
+  .m-msg.me{justify-content:flex-end}
+  .m-msg.me .bubble{background:var(--accent);color:#fff;border:none;border-radius:14px 4px 14px 14px;box-shadow:0 6px 14px rgba(201,111,74,.18)}
+  .m-tag{font-size:9px;color:#A79D92;margin-top:5px}
+  .m-msg .memory-chips{gap:5px;margin-top:7px}
+  .m-msg .memory-chips .chip{font-size:9.5px;padding:2px 7px}
+  .m-input{display:flex;align-items:center;gap:8px;margin:0 12px 8px;padding:8px 10px;border:1px solid #E4DACE;border-radius:14px;background:#fff;box-shadow:0 6px 18px rgba(46,41,37,.05)}
+  .m-input input{flex:1;border:none;outline:none;font-size:12.5px;background:transparent;color:var(--ink)}
+  .m-input .mic{width:28px;height:28px;font-size:13px;background:#F6EFE6;border-radius:50%;display:grid;place-items:center;color:var(--accent-ink)}
+  .m-send{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:14px}
+  .m-tabs{height:54px;display:flex;align-items:flex-start;justify-content:space-around;border-top:1px solid #EDE6DC;font-size:10.5px;color:#A79D92;padding-top:9px;padding-bottom:8px}
+  .m-tabs .on{color:var(--accent);font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- ========== 1 主聊天 ========== -->
+<section class="screen" id="chat">
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo serif">念</div>
+        <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+      </div>
+      <div class="search">搜索对话与记忆…</div>
+
+      <div class="group-label">今天</div>
+      <div class="conv active">
+        <div class="av">妈</div>
+        <div class="meta"><b>妈妈</b><span>答不上来就老实说…</span></div>
+        <div class="dot"></div>
+      </div>
+      <div class="conv">
+        <div class="av">爸</div>
+        <div class="meta"><b>爸爸</b><span>下棋那事儿改天聊</span></div>
+      </div>
+
+      <div class="group-label">上周</div>
+      <div class="conv">
+        <div class="av">妈</div>
+        <div class="meta"><b>妈妈</b><span>你那个胃，自己不清楚？</span></div>
+      </div>
+      <div class="conv">
+        <div class="av">◎</div>
+        <div class="meta"><b>回忆 · 2024 春节</b><span>18 条对话</span></div>
+      </div>
+
+      <div class="side-foot">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈 · 母亲</b><span>已陪伴 12 天 · 记忆 38 条</span></div>
+          <div class="edit">编辑</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="chat-main">
+      <div class="topbar">
+        <div class="who">
+          <div class="av">妈</div>
+          <div><b>妈妈 <span class="ai-badge">AI 扮演</span></b><span>记得你 38 件事 · 最近联系 3 天前</span></div>
+        </div>
+        <div class="top-actions">
+          <div class="pill-btn">音色 · 温柔 ▾</div>
+          <div class="pill-btn">关怀 · 22:00–08:00 安静 ▾</div>
+          <div class="icon-btn">⚙</div>
+        </div>
+      </div>
+
+      <div class="messages">
+        <div class="day">三天前 · 周二 21:14</div>
+
+        <div class="msg">
+          <div class="av">妈</div>
+          <div class="bubble">这么晚还不睡？明天不上班了？</div>
+        </div>
+        <div class="msg-meta">21:14 · 主动关怀</div>
+
+        <div class="msg me">
+          <div class="av">我</div>
+          <div class="bubble">马上睡了妈</div>
+        </div>
+
+        <div class="day">今天 08:42</div>
+
+        <div class="msg proactive">
+          <div class="av">妈</div>
+          <div class="bubble">这几天没见你说话，是不是又熬夜赶东西了？</div>
+        </div>
+        <div class="msg-meta">08:42 · 定时关怀 · 距上次 3 天</div>
+
+        <div class="msg me">
+          <div class="av">我</div>
+          <div class="bubble">妈，我最近在准备面试，有点焦虑</div>
+        </div>
+
+        <div class="msg">
+          <div class="av">妈</div>
+          <div class="bubble">
+            哎呀，面试有什么好怕的。你把要说的想清楚就行，别自己吓自己。对了，下周三那个面试，准备得怎么样了？
+            <div class="memory-chips">
+              <span class="chip">⏰ 待跟进 · 下周三面试</span>
+              <span class="chip">♡ 偏好 · 不喜欢被催</span>
+            </div>
+          </div>
+        </div>
+        <div class="msg-meta">08:43 · 它想起了 2 件事</div>
+
+        <div class="msg me">
+          <div class="av">我</div>
+          <div class="bubble">还行，怕答不上来</div>
+        </div>
+
+        <div class="msg">
+          <div class="av">妈</div>
+          <div class="bubble">答不上来就老实说答不上来，别硬编。你从小一紧张就爱瞎编，越编越乱。<span class="caret"></span></div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="field">
+          <div class="mic">🎙</div>
+          <input placeholder="跟妈妈说点什么…" value="">
+        </div>
+        <div class="foot">
+          <div class="left">
+            <span class="chip">语音输入</span>
+            <span class="chip">文字</span>
+            <span class="small muted" style="margin-left:6px">Enter 发送 · Shift+Enter 换行</span>
+          </div>
+          <button class="send">发送</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="sidepanel">
+      <div class="panel-head"><h3>这次想起了…</h3><span>3 件事</span></div>
+      <p class="panel-sub">它根据这些记忆，决定怎么回应你</p>
+
+      <div class="sec-label">被想起的事</div>
+      <div class="mem-card">
+        <div class="top"><span class="t follow">待办</span><span class="score">想起过 2 次</span></div>
+        <p class="txt">下周三上午 10:00 有面试</p>
+      </div>
+      <div class="mem-card">
+        <div class="top"><span class="t pref">偏好</span><span class="score">想起过 5 次</span></div>
+        <p class="txt">不喜欢被催，越催越烦</p>
+      </div>
+      <div class="mem-card">
+        <div class="top"><span class="t fact">关于你</span><span class="score">想起过 3 次</span></div>
+        <p class="txt">最近在准备跳槽</p>
+      </div>
+
+      <div class="dev-toggle"><span>⚙ 开发者视图</span><span>分支 · token · 1.8s ▸</span></div>
+
+      <div class="persona-snap">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈</b> <span>· 母亲</span></div>
+        </div>
+        <p>刀子嘴豆腐心，嘴上嫌弃、行动上处处照顾。短句多、反问多。</p>
+        <div class="memory-chips">
+          <span class="chip">哎呀</span><span class="chip">烦死了</span><span class="chip">你吃了吗</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 2 人设塑造 ========== -->
+<section class="screen" id="persona">
+  <div class="page-head">
+    <div class="brand" style="padding:0">
+      <div class="logo serif">念</div>
+      <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+    </div>
+    <div class="steps">
+      <div class="step done"><span class="n">1</span>粘贴对话</div>
+      <span class="step-line"></span>
+      <div class="step now"><span class="n">2</span>标记说话人</div>
+      <span class="step-line"></span>
+      <div class="step"><span class="n">3</span>确认人设</div>
+    </div>
+    <div class="pill-btn">保存草稿</div>
+  </div>
+
+  <div class="persona-body">
+    <div class="convo-panel">
+      <div class="hint">
+        <span>✓</span>
+        <div>已自动区分说话人，暖黄色的是 <b>妈妈说的话</b>。请抽检：点错的气泡再点一下就能改回来。</div>
+      </div>
+
+      <div class="convo">
+        <div class="line-wrap">
+          <div class="speaker">我 · 11-20 21:03</div>
+          <div class="line"><div class="ava">我</div><div class="b">妈，我周末不回去了</div></div>
+        </div>
+
+        <div class="line-wrap target">
+          <div class="speaker" style="text-align:right">妈妈 · 11-20 21:05</div>
+          <div class="line target"><div class="ava">妈</div><div class="b">又不回来？行吧，你自己看着办。<span class="tag">妈妈</span></div></div>
+        </div>
+
+        <div class="line-wrap">
+          <div class="speaker">我 · 11-20 21:06</div>
+          <div class="line"><div class="ava">我</div><div class="b">最近工作忙</div></div>
+        </div>
+
+        <div class="line-wrap target">
+          <div class="speaker" style="text-align:right">妈妈 · 11-20 21:07</div>
+          <div class="line target"><div class="ava">妈</div><div class="b">忙忙忙，你就知道忙。饭按时吃没有？<span class="tag">妈妈</span></div></div>
+        </div>
+
+        <div class="line-wrap">
+          <div class="speaker">我 · 11-20 21:08</div>
+          <div class="line"><div class="ava">我</div><div class="b">吃了</div></div>
+        </div>
+
+        <div class="line-wrap target">
+          <div class="speaker" style="text-align:right">妈妈 · 11-20 21:08</div>
+          <div class="line target"><div class="ava">妈</div><div class="b">吃的什么？别又是外卖。你那个胃，自己不清楚？<span class="tag">妈妈</span></div></div>
+        </div>
+
+        <div class="line-wrap">
+          <div class="speaker">我 · 11-20 21:09</div>
+          <div class="line"><div class="ava">我</div><div class="b">知道了知道了</div></div>
+        </div>
+
+        <div class="line-wrap target">
+          <div class="speaker" style="text-align:right">妈妈 · 11-20 21:10</div>
+          <div class="line target"><div class="ava">妈</div><div class="b">知道了知道了，每次都说知道。钱够不够花？<span class="tag">妈妈</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="right-panel">
+      <div class="stat-row">
+        <div class="stat"><b>7</b><span>识别为妈妈</span></div>
+        <div class="stat"><b>14</b><span>总消息</span></div>
+        <div class="stat"><b>1</b><span>待抽检</span></div>
+      </div>
+
+      <div>
+        <h4>抽检要点</h4>
+        <ul class="tip-list">
+          <li>暖黄色是它判断的妈妈的话</li>
+          <li>点错的气泡再点一下即可改回</li>
+          <li>越真实越好，口头禅保留</li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>提取后会得到</h4>
+        <div class="chip-cloud">
+          <span class="chip">口头禅</span><span class="chip">性格标签</span><span class="chip">关心方式</span><span class="chip">语气习惯</span>
+        </div>
+      </div>
+
+      <div>
+        <h4>示例</h4>
+        <div class="prompt-box" style="font-size:11.5px;color:#6E655B">
+          “哎呀，烦死了” → 语气词<br>
+          “你自己看着办” → 刀子嘴<br>
+          “钱够不够花” → 关心方式
+        </div>
+      </div>
+
+      <button class="arrow-btn">生成人格 →</button>
+      <div class="foot-note">内容仅保存在本地服务器</div>
+      <div class="foot-note" style="margin-top:4px">不想标注？<b style="color:var(--accent)">跳过，先用默认人设聊聊</b></div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 3 人设确认 ========== -->
+<section class="screen" id="confirm">
+  <div class="blur-bg">
+    <div class="blk"></div>
+    <div class="blk mid">
+      <div class="fake-msg short"></div>
+      <div class="fake-msg"></div>
+      <div class="fake-msg short"></div>
+      <div class="fake-msg"></div>
+      <div class="fake-msg short"></div>
+    </div>
+    <div class="blk right"></div>
+  </div>
+  <div class="scrim"></div>
+
+  <div class="modal">
+    <div class="modal-top">
+      <div class="interrupt-badge">● 人设提取已暂停 · 等待你的确认</div>
+      <h2>这是你记忆中的妈妈吗？</h2>
+      <p>AI 从 7 条对话里提取了这些人格特征。改到你满意为止——她将以 AI 角色扮演的方式陪你说话，随时可以再改。</p>
+    </div>
+
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="field-box">
+          <label>称呼</label>
+          <div class="val"><i>妈妈</i></div>
+        </div>
+        <div class="field-box">
+          <label>关系</label>
+          <div class="val"><i>母亲</i></div>
+        </div>
+      </div>
+
+      <div class="field-box" style="margin-bottom:12px">
+        <label>性格标签</label>
+        <div class="chip-cloud">
+          <span class="chip">刀子嘴豆腐心<span class="x">×</span></span>
+          <span class="chip">要强<span class="x">×</span></span>
+          <span class="chip">节俭<span class="x">×</span></span>
+          <span class="chip">爱操心<span class="x">×</span></span>
+          <span class="chip add">+ 添加</span>
+        </div>
+      </div>
+
+      <div class="field-box" style="margin-bottom:12px">
+        <label>口头禅</label>
+        <div class="chip-cloud">
+          <span class="chip">哎呀<span class="x">×</span></span>
+          <span class="chip">烦死了<span class="x">×</span></span>
+          <span class="chip">你吃了吗<span class="x">×</span></span>
+          <span class="chip">别熬夜<span class="x">×</span></span>
+          <span class="chip add">+ 添加</span>
+        </div>
+      </div>
+
+      <div class="field-box" style="margin-bottom:12px">
+        <label>关心方式</label>
+        <div class="val" style="font-size:12px;color:#4E463E;line-height:1.6">用唠叨和追问表达关心；嘴上嫌弃，行动上处处照顾；很少直接说想。</div>
+      </div>
+
+      <div class="prompt-box">
+        <div class="head"><span>生成的 System Prompt</span><span>展开 ▸</span></div>
+        你是妈妈，性格要强、节俭，说话短促……（点击展开可编辑）
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn-ghost">重新提取</button>
+      <div class="note">保存后随时可以在「人设」里修改</div>
+      <button class="btn-main">保存并开始陪伴</button>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 4 记忆管理 ========== -->
+<section class="screen" id="memory">
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo serif">念</div>
+        <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+      </div>
+      <div class="search">搜索对话与记忆…</div>
+      <div class="group-label">管理</div>
+      <div class="conv"><div class="av">▤</div><div class="meta"><b>对话</b><span>妈妈 · 12 天</span></div></div>
+      <div class="conv active"><div class="av">☰</div><div class="meta"><b>记忆库</b><span>38 条，持续更新</span></div></div>
+      <div class="conv"><div class="av">◈</div><div class="meta"><b>人设</b><span>妈妈 · v3</span></div></div>
+      <div class="conv"><div class="av">◷</div><div class="meta"><b>待跟进</b><span>3 件事</span></div></div>
+      <div class="group-label">隐私</div>
+      <div class="conv"><div class="av">⌫</div><div class="meta"><b>数据与删除</b><span>全部保存在本地</span></div></div>
+      <div class="side-foot">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈 · 母亲</b><span>已陪伴 12 天</span></div>
+          <div class="edit">切换</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="mem-main">
+      <div class="mem-head">
+        <div>
+          <h2>记忆库</h2>
+          <p>这里是你告诉过它的事。随时可以改，也可以让它忘掉。</p>
+        </div>
+        <button class="btn-ghost">+ 手动添加</button>
+      </div>
+
+      <div class="filters">
+        <span class="filter on">全部<span class="num">38</span></span>
+        <span class="filter">关于我<span class="num">12</span></span>
+        <span class="filter">喜欢的事<span class="num">9</span></span>
+        <span class="filter">发生过<span class="num">8</span></span>
+        <span class="filter">在意的人<span class="num">4</span></span>
+        <span class="filter">答应我的<span class="num">3</span></span>
+        <span class="filter">这段时间<span class="num">2</span></span>
+      </div>
+
+      <div class="mem-list">
+        <div class="mem-row">
+          <div><span class="t follow">待办</span></div>
+          <div class="body">下周三上午 10:00 有面试<small>来自 11-22 的对话 · 被想起 2 次</small></div>
+          <div class="stars">★★★★★</div>
+          <div class="date">11-22</div>
+          <div class="status">● 记得</div>
+          <div class="ops">编辑 · 删除</div>
+        </div>
+
+        <div class="mem-row">
+          <div><span class="t pref">偏好</span></div>
+          <div class="body">不喜欢被催，越催越烦<small>来自 11-20 的对话 · 被想起 5 次</small></div>
+          <div class="stars">★★★★☆</div>
+          <div class="date">11-20</div>
+          <div class="status">● 记得</div>
+          <div class="ops">编辑 · 删除</div>
+        </div>
+
+        <div class="mem-row">
+          <div><span class="t fact">关于你</span></div>
+          <div class="body">用户换到杭州做产品运营<small>来自 11-24 的对话 · 更新了旧说法</small></div>
+          <div class="stars">★★★★★</div>
+          <div class="date">11-24</div>
+          <div class="status">● 记得</div>
+          <div class="ops">编辑 · 删除</div>
+        </div>
+
+        <div class="mem-row superseded">
+          <div><span class="t fact">关于你</span></div>
+          <div class="body">用户在上海做运营<small>已被 11-24 的新说法更新 · 旧记录保留</small></div>
+          <div class="stars">★★★☆☆</div>
+          <div class="date">11-02</div>
+          <div class="status sup">○ 已更新</div>
+          <div class="ops">查看 · 删除</div>
+        </div>
+
+        <div class="mem-row">
+          <div><span class="t rel">在意的人</span></div>
+          <div class="body">和室友最近有点矛盾，不想回宿舍<small>来自 11-21 的对话</small></div>
+          <div class="stars">★★★★☆</div>
+          <div class="date">11-21</div>
+          <div class="status">● 记得</div>
+          <div class="ops">编辑 · 删除</div>
+        </div>
+
+        <div class="mem-row">
+          <div><span class="t event">发生过</span></div>
+          <div class="body">上周和朋友去看了演唱会，很开心<small>来自 11-18 的对话</small></div>
+          <div class="stars">★★★☆☆</div>
+          <div class="date">11-18</div>
+          <div class="status">● 记得</div>
+          <div class="ops">编辑 · 删除</div>
+        </div>
+
+        <div class="mem-row">
+          <div><span class="t sum">这段时间</span></div>
+          <div class="body">11 月 18 日会话摘要：聊了工作压力与演唱会<small>由 12 条对话整理成一段</small></div>
+          <div class="stars">★★☆☆☆</div>
+          <div class="date">11-18</div>
+          <div class="status">● 记得</div>
+          <div class="ops">查看 · 删除</div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="right-sum">
+      <div class="sum-card">
+        <b>38</b><span>条长期记忆</span>
+        <p>最近 7 天新增 9 条，压缩 2 段会话。</p>
+      </div>
+
+      <div class="sec-label">记忆状态</div>
+      <div class="health">
+        <div class="ring"><i>78%</i></div>
+        <p>还记得的占比<br>2 条已更新 · 6 条很久没想起</p>
+      </div>
+
+      <div class="sum-card">
+        <b>3</b><span>件待跟进</span>
+        <p>下周三面试 · 室友矛盾 · 体检报告</p>
+      </div>
+
+      <div class="sum-card">
+        <span>最近一次整理</span>
+        <p style="margin-top:4px">今天 08:43 整理过一次<br>新记住 2 件 · 更新 1 件</p>
+      </div>
+
+      <div class="sum-card" style="background:#FBF6EF">
+        <span>隐私</span>
+        <p style="margin-top:4px">所有记忆只存在你的服务器上。删除后立即从检索中移除。</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 5 设置 ========== -->
+<section class="screen" id="settings">
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo serif">念</div>
+        <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+      </div>
+      <div class="search">搜索对话与记忆…</div>
+      <div class="group-label">管理</div>
+      <div class="conv"><div class="av">▤</div><div class="meta"><b>对话</b><span>妈妈 · 12 天</span></div></div>
+      <div class="conv"><div class="av">☰</div><div class="meta"><b>记忆库</b><span>38 条，持续更新</span></div></div>
+      <div class="conv"><div class="av">◈</div><div class="meta"><b>人设</b><span>妈妈 · v3</span></div></div>
+      <div class="conv"><div class="av">◷</div><div class="meta"><b>待跟进</b><span>3 件事</span></div></div>
+      <div class="conv active"><div class="av">⚙</div><div class="meta"><b>设置</b><span>关怀、声音、隐私</span></div></div>
+      <div class="side-foot">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈 · 母亲</b><span>已陪伴 12 天</span></div>
+          <div class="edit">切换</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="set-main">
+      <div class="mem-head">
+        <div>
+          <h2>设置</h2>
+          <p>决定她多久来找你一次、用什么样的声音说话。</p>
+        </div>
+      </div>
+
+      <div class="set-card">
+        <h4>主动关怀</h4>
+        <p class="desc">她不会一直打扰你，只在合适的时候轻轻问一句。</p>
+        <div class="set-row"><span>开启主动问候</span><div class="switch"></div></div>
+        <div class="set-row"><span>多久没联系时问候</span><span class="r">3 天 · 每天最多 1 条</span></div>
+        <div class="set-row"><span>安静时段</span><span class="r">22:00 — 08:00</span></div>
+        <div class="set-row"><span>我情绪低落时自动暂停</span><div class="switch"></div></div>
+      </div>
+
+      <div class="set-card">
+        <h4>声音</h4>
+        <p class="desc">默认用「温柔」，她会跟着你的情绪调整语速和音调。</p>
+        <div style="margin-bottom:8px">
+          <span class="voice-opt on">温柔 · 晓晓</span>
+          <span class="voice-opt">爽朗 · 云希</span>
+          <span class="voice-opt">絮叨 · 晓伊</span>
+          <span class="voice-opt">试听 ▸</span>
+        </div>
+        <div class="set-row"><span>语音输入</span><span class="r">Edge 浏览器可用</span></div>
+        <div class="set-row"><span>自动朗读回复</span><div class="switch"></div></div>
+      </div>
+
+      <div class="set-card">
+        <h4>数据与隐私</h4>
+        <p class="desc">所有对话和记忆只保存在这台服务器上，删除后不再参与检索。</p>
+        <div class="set-row"><span>导出我的数据</span><span class="r">JSON ▸</span></div>
+        <div class="set-row"><span>清空所有记忆</span><span class="r" style="color:#C2543F">删除 ▸</span></div>
+      </div>
+
+      <div class="set-card">
+        <h4>关于</h4>
+        <p class="desc">她是一个 AI 角色，基于你提供的对话学习说话方式，不是真人。</p>
+        <div class="set-row"><span>版本</span><span class="r">v1.0.0</span></div>
+      </div>
+    </main>
+
+    <aside class="right-sum">
+      <div class="sum-card">
+        <b>22:00</b><span>安静时段开始</span>
+        <p>这段时间她不会主动发消息。</p>
+      </div>
+      <div class="sum-card">
+        <b>1</b><span>每天最多问候</span>
+        <p>连续 3 天没联系才会触发一次。</p>
+      </div>
+      <div class="sum-card" style="background:#FBF6EF">
+        <span>AI 角色</span>
+        <p style="margin-top:4px">她记得你，但她不是真人。需要真实帮助时，请找身边的人。</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 6 安全分支 ========== -->
+<section class="screen" id="safety">
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo serif">念</div>
+        <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+      </div>
+      <div class="search">搜索对话与记忆…</div>
+      <div class="group-label">今天</div>
+      <div class="conv active">
+        <div class="av">妈</div>
+        <div class="meta"><b>妈妈</b><span>安全模式中</span></div>
+        <div class="dot" style="background:#C2543F"></div>
+      </div>
+      <div class="conv">
+        <div class="av">爸</div>
+        <div class="meta"><b>爸爸</b><span>下棋那事儿改天聊</span></div>
+      </div>
+      <div class="group-label">上周</div>
+      <div class="conv"><div class="av">妈</div><div class="meta"><b>妈妈</b><span>你那个胃，自己不清楚？</span></div></div>
+      <div class="side-foot">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈 · 母亲</b><span>已陪伴 12 天 · 记忆 38 条</span></div>
+          <div class="edit">编辑</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="chat-main">
+      <div class="topbar">
+        <div class="who">
+          <div class="av">妈</div>
+          <div><b>妈妈 <span class="ai-badge">AI 扮演</span></b><span>安全模式 · 本次暂停角色扮演</span></div>
+        </div>
+        <div class="top-actions">
+          <div class="pill-btn">退出安全模式</div>
+        </div>
+      </div>
+
+      <div class="messages">
+        <div class="day">今天 23:41</div>
+
+        <div class="msg me">
+          <div class="av">我</div>
+          <div class="bubble">最近真的撑不住了，感觉没什么意思</div>
+        </div>
+        <div class="msg-meta">23:41</div>
+
+        <div class="safety-card">
+          <div class="st">⚠ 这次我不扮演妈妈</div>
+          <p>听到你这么说，我很担心。我是 AI，不能替代真正的帮助，但这句话我必须认真回应：如果你现在有伤害自己的想法，请先联系下面任何一个人。</p>
+          <div class="help-lines">
+            <b>全国心理援助热线</b>　12356<br>
+            <b>北京心理危机研究与干预中心</b>　010-82951332<br>
+            <b>紧急情况</b>　120
+          </div>
+          <div class="safety-actions">
+            <span class="chip accent">我暂时没事，继续聊</span>
+            <span class="chip">需要更多帮助</span>
+          </div>
+        </div>
+        <div class="msg-meta">23:41 · 安全分支 · 本轮不写入记忆</div>
+      </div>
+
+      <div class="composer">
+        <div class="field">
+          <div class="mic">🎙</div>
+          <input placeholder="想说点什么…">
+        </div>
+        <div class="foot">
+          <div class="left">
+            <span class="chip">语音输入</span>
+            <span class="chip">文字</span>
+          </div>
+          <button class="send">发送</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="sidepanel">
+      <div class="panel-head"><h3>这次先不谈别的</h3><span>安全优先</span></div>
+      <p class="panel-sub">检测到危机表达，已停止角色扮演</p>
+
+      <div class="mem-card">
+        <div class="top"><span class="t follow">安全</span><span class="score">crisis</span></div>
+        <p class="txt">本轮不检索记忆、不生成人设化回复、不写入记忆</p>
+      </div>
+
+      <div class="dev-toggle" style="margin-top:12px"><span>⚙ 开发者视图</span><span>branch = safety ▸</span></div>
+
+      <div class="persona-snap" style="margin-top:14px">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈</b> <span>· 母亲</span></div>
+        </div>
+        <p>她是 AI 扮演的角色。危机表达时，安全高于陪伴感。</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 7 待跟进 ========== -->
+<section class="screen" id="followups">
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo serif">念</div>
+        <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+      </div>
+      <div class="search">搜索对话与记忆…</div>
+      <div class="group-label">管理</div>
+      <div class="conv"><div class="av">▤</div><div class="meta"><b>对话</b><span>妈妈 · 12 天</span></div></div>
+      <div class="conv"><div class="av">☰</div><div class="meta"><b>记忆库</b><span>38 条，持续更新</span></div></div>
+      <div class="conv"><div class="av">◈</div><div class="meta"><b>人设</b><span>妈妈 · v3</span></div></div>
+      <div class="conv active"><div class="av">◷</div><div class="meta"><b>待跟进</b><span>3 件事</span></div></div>
+      <div class="conv"><div class="av">⚙</div><div class="meta"><b>设置</b><span>关怀、声音、隐私</span></div></div>
+      <div class="side-foot">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈 · 母亲</b><span>已陪伴 12 天</span></div>
+          <div class="edit">切换</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="mem-main">
+      <div class="mem-head">
+        <div>
+          <h2>待跟进</h2>
+          <p>答应过你的事，她会记得问一句。不会催，也不会忘。</p>
+        </div>
+        <button class="btn-ghost">+ 手动添加</button>
+      </div>
+
+      <div class="filters">
+        <span class="filter on">全部<span class="num">4</span></span>
+        <span class="filter">本周<span class="num">2</span></span>
+        <span class="filter">已过期<span class="num">1</span></span>
+        <span class="filter">已完成<span class="num">1</span></span>
+      </div>
+
+      <div class="fu-row">
+        <div class="fu-date"><b>26</b><span>11 月 · 周三</span></div>
+        <div class="fu-body"><b>上午 10:00 面试</b><small>来自 11-22 的对话 · 被想起 2 次</small></div>
+        <div class="fu-status soon">还有 2 天</div>
+        <div class="fu-ops">改期 · 完成</div>
+      </div>
+
+      <div class="fu-row">
+        <div class="fu-date"><b>28</b><span>11 月 · 周五</span></div>
+        <div class="fu-body"><b>问问和室友那件事后来怎么样了</b><small>来自 11-21 的对话 · 情绪事件</small></div>
+        <div class="fu-status">本周内</div>
+        <div class="fu-ops">改期 · 完成</div>
+      </div>
+
+      <div class="fu-row">
+        <div class="fu-date"><b>18</b><span>11 月 · 周二</span></div>
+        <div class="fu-body"><b>体检报告出来了，记得看</b><small>来自 11-16 的对话 · 已提醒 1 次</small></div>
+        <div class="fu-status over">已过期</div>
+        <div class="fu-ops">再问一次 · 完成</div>
+      </div>
+
+      <div class="fu-row done">
+        <div class="fu-date"><b>18</b><span>11 月 · 周二</span></div>
+        <div class="fu-body"><b>演唱会那天玩得开心吗</b><small>来自 11-15 的对话 · 你标记了已完成</small></div>
+        <div class="fu-status done">已完成</div>
+        <div class="fu-ops">查看 · 删除</div>
+      </div>
+
+      <div class="hint" style="margin-top:14px">
+        <span>◷</span>
+        <div>她只会在 <b>3 天没联系</b> 时提醒一次，每天最多 1 条，22:00 后不打扰。你可以在设置里改。</div>
+      </div>
+    </main>
+
+    <aside class="right-sum">
+      <div class="sum-card">
+        <b>3</b><span>件待办</span>
+        <p>最近 7 天新增 2 件，完成 1 件。</p>
+      </div>
+      <div class="sum-card">
+        <b>1</b><span>件已过期</span>
+        <p>体检报告已经过了 4 天，可以让她再问一次。</p>
+      </div>
+      <div class="sum-card" style="background:#FBF6EF">
+        <span>怎么判断的</span>
+        <p style="margin-top:4px">从对话里识别出"时间 + 要做的事"，转换成具体日期，写进记忆。你可以随时改或删。</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 8 人设管理 ========== -->
+<section class="screen" id="persona-manage">
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo serif">念</div>
+        <div><h1>念念</h1><p>陪伴，从记得开始</p></div>
+      </div>
+      <div class="search">搜索对话与记忆…</div>
+      <div class="group-label">管理</div>
+      <div class="conv"><div class="av">▤</div><div class="meta"><b>对话</b><span>妈妈 · 12 天</span></div></div>
+      <div class="conv"><div class="av">☰</div><div class="meta"><b>记忆库</b><span>38 条，持续更新</span></div></div>
+      <div class="conv active"><div class="av">◈</div><div class="meta"><b>人设</b><span>妈妈 · v3</span></div></div>
+      <div class="conv"><div class="av">◷</div><div class="meta"><b>待跟进</b><span>3 件事</span></div></div>
+      <div class="conv"><div class="av">⚙</div><div class="meta"><b>设置</b><span>关怀、声音、隐私</span></div></div>
+      <div class="side-foot">
+        <div class="row">
+          <div class="av">妈</div>
+          <div><b>妈妈 · 母亲</b><span>已陪伴 12 天</span></div>
+          <div class="edit">切换</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="mem-main">
+      <div class="mem-head">
+        <div>
+          <h2>人设</h2>
+          <p>你记忆里的她。随时可以改，改完从下一句对话开始生效。</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-ghost">重新提取</button>
+          <button class="btn-main">编辑人设</button>
+        </div>
+      </div>
+
+      <div class="persona-hero">
+        <div class="big-av">妈</div>
+        <div>
+          <h2>妈妈 <span class="ai-badge">AI 扮演</span></h2>
+          <p>母亲 · 已陪伴 12 天 · 人设 v3 · 最近修改于今天 08:40</p>
+          <div class="p-tags">
+            <span class="chip">刀子嘴豆腐心</span>
+            <span class="chip">要强</span>
+            <span class="chip">节俭</span>
+            <span class="chip">爱操心</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <h4>口头禅</h4>
+        <div class="p-tags" style="margin-top:0">
+          <span class="chip">哎呀</span>
+          <span class="chip">烦死了</span>
+          <span class="chip">你吃了吗</span>
+          <span class="chip">别熬夜</span>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <h4>关心方式</h4>
+        <p style="font-size:11.5px;color:#5E554B;line-height:1.8">用唠叨和追问表达关心；嘴上嫌弃，行动上处处照顾；很少直接说想。</p>
+      </div>
+
+      <div class="panel-block">
+        <h4>生成的 System Prompt</h4>
+        <div class="prompt-preview">
+          你是妈妈，用户的母亲。性格要强、节俭、爱操心，说话短促，嘴硬心软……（点击展开可编辑）
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <h4>版本历史</h4>
+        <div class="version-item"><span class="v">v3</span><div>修改了口头禅：加入「别熬夜」<small>今天 08:40 · 你确认</small></div></div>
+        <div class="version-item"><span class="v">v2</span><div>补充性格标签：爱操心<small>11-20 21:30 · 你确认</small></div></div>
+        <div class="version-item"><span class="v">v1</span><div>从 7 条对话中提取初始人设<small>11-20 21:12 · 你确认</small></div></div>
+      </div>
+    </main>
+
+    <aside class="right-sum">
+      <div class="sum-card">
+        <b>38</b><span>条相关记忆</span>
+        <p>人设决定"怎么说"，记忆决定"记得什么"。</p>
+      </div>
+      <div class="sum-card">
+        <span>声音</span>
+        <p style="margin-top:4px">温柔 · 晓晓<br>低落时会放慢语速</p>
+      </div>
+      <div class="sum-card" style="background:#FBF6EF">
+        <span>关于她</span>
+        <p style="margin-top:4px">她是一个 AI 角色，不会真的代替妈妈。修改人设只会改变说话方式，不会改变你们真实的记忆。</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 9 移动端聊天 ========== -->
+<section class="screen" id="mobile">
+  <div class="m-app">
+    <div class="m-status"><span>9:41</span><span>▮▮▮ ᯤ ▰</span></div>
+    <div class="m-head">
+      <div class="m-back">‹</div>
+      <div class="m-who"><b>妈妈 <span class="ai-badge">AI 扮演</span></b><span>记得你 38 件事 · 最近联系 3 天前</span></div>
+      <div class="m-menu">⋯</div>
+    </div>
+
+    <div class="m-msgs">
+      <div class="day">今天 08:42</div>
+
+      <div class="m-msg">
+        <div class="bubble">这几天没见你说话，是不是又熬夜赶东西了？<div class="m-tag">主动关怀 · 距上次 3 天</div></div>
+      </div>
+
+      <div class="m-msg me">
+        <div class="bubble">妈，我最近在准备面试，有点焦虑</div>
+      </div>
+
+      <div class="m-msg">
+        <div class="bubble">
+          哎呀，面试有什么好怕的。你把要说的想清楚就行，别自己吓自己。对了，下周三那个面试，准备得怎么样了？
+          <div class="memory-chips">
+            <span class="chip">⏰ 下周三面试</span>
+            <span class="chip">♡ 不喜欢被催</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="m-msg me">
+        <div class="bubble">还行，怕答不上来</div>
+      </div>
+
+      <div class="m-msg">
+        <div class="bubble">答不上来就老实说答不上来，别硬编。你从小一紧张就爱瞎编，越编越乱。<span class="caret"></span></div>
+      </div>
+    </div>
+
+    <div class="m-input">
+      <div class="mic">🎙</div>
+      <input placeholder="跟妈妈说点什么…">
+      <div class="m-send">↑</div>
+    </div>
+
+    <div class="m-tabs">
+      <span class="on">聊天</span>
+      <span>记忆</span>
+      <span>待办</span>
+      <span>设置</span>
+    </div>
+  </div>
+</section>
+
+<script>
+  const id = location.hash.slice(1) || 'chat';
+  document.querySelectorAll('.screen').forEach(function (s) {
+    s.classList.toggle('active', s.id === id);
+  });
+</script>
+</body>
+</html>
