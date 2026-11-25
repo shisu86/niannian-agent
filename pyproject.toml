@@ -1,0 +1,16 @@
+[project]
+name = "niannian-agent"
+version = "0.1.0"
+description = "云端部署的 AI 情感陪伴 Agent"
+requires-python = ">=3.12,<3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv", "data", "preview"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
