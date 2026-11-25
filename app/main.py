@@ -8,6 +8,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,8 @@ from app.api import system
 from app.config import BASE_DIR, get_settings
 from app.db import init_db
 from app.errors import error_body, register_exception_handlers
+from app.graph.checkpointer import open_checkpointer
+from app.graph.main_graph import build_graph
 from app.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -36,7 +39,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # S0 不依赖模型，缺 Key 只警告；S2 接入 LLM 时再强制校验
         logger.warning("未配置 DEEPSEEK_API_KEY，流式对话暂不可用（S0 阶段可忽略）")
     await init_db()  # 建表失败会直接阻断启动，避免带着坏数据库对外服务
-    yield
+
+    # checkpointer 的生命周期必须覆盖整个服务运行期：
+    # 图在启动时编译一次，所有请求复用同一个实例，禁止每请求新建。
+    checkpoint_path = Path(settings.checkpoint_db_path)
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = BASE_DIR / checkpoint_path
+    async with open_checkpointer(checkpoint_path) as saver:
+        app.state.graph = build_graph(saver)
+        yield
 
 
 def create_app() -> FastAPI:
