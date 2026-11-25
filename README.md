@@ -143,7 +143,9 @@ uvicorn app.main:app --reload --port 8000
 
 - [x] 需求、用户故事、开发、数据库设计四份文档
 - [x] UI 预览与设计变量
-- [ ] 后端骨架与流式对话
+- [x] 服务骨架（FastAPI + SQLite + 健康检查）
+- [x] LangGraph 主图骨架（条件分支 + checkpointer）
+- [ ] 流式对话（S2）
 - [ ] 记忆系统（FTS5 + reflect）
 - [ ] 人设 interrupt 子图
 - [ ] 主动关怀与语音
