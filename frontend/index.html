@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>念念 · AI 情感陪伴</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">念</div>
+        <div>
+          <h1>念念</h1>
+          <p>陪伴，从记得开始</p>
+        </div>
+      </div>
+      <!-- AI 身份必须常驻可见，避免用户误以为是真人 -->
+      <span class="badge">AI 扮演</span>
+    </header>
+
+    <section id="messages" class="messages" aria-live="polite">
+      <div class="empty" id="empty">
+        <p>今天想聊点什么？</p>
+        <p class="hint">我会记得你说过的事。</p>
+      </div>
+    </section>
+
+    <form id="composer" class="composer">
+      <textarea id="input" rows="1" maxlength="2000" placeholder="说点什么…"></textarea>
+      <button type="submit" id="send">发送</button>
+    </form>
+    <p id="status" class="status" role="status"></p>
+  </main>
+
+  <script type="module" src="/js/chat.js"></script>
+</body>
+</html>

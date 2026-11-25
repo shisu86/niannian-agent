@@ -1,19 +1,20 @@
-"""S1 占位节点。
+"""主图节点。
 
-本阶段不调用 LLM，用关键词规则模拟 analyze 的结果，
-目的是验证图结构、条件边与状态持久化。
+S2 起 generate 接入 DeepSeek 流式输出：
+- 安全分支不调用模型，直接返回固定求助话术；
+- 其余分支组装 system + 最近 8 轮窗口，调用模型并逐 token 写出。
 
-S2 起 generate 接入 DeepSeek 流式输出；
-S6 起 analyze 换成一次结构化 LLM 调用（意图/情绪/风险/query），
-届时本文件的规则只作为极端输入的兜底。
+S6 会把 analyze 换成结构化 LLM 调用；当前规则版作为极端输入的安全兜底。
 """
 
 import logging
 import re
 
 from langchain_core.messages import AIMessage
+from langgraph.config import get_stream_writer
 
 from app.graph.state import AgentState
+from app.services.llm import stream_chat
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,17 @@ LOW_WORDS = (
 )
 HELP_WORDS = ("怎么办", "帮我", "该不该", "建议")
 
+# 安全分支的固定话术：不经过模型，避免模型擅继续角色扮演
+SAFETY_REPLY = (
+    "听到你这么说，我很担心。我是 AI，不能替代真正的帮助，但这句话我必须认真回应："
+    "如果你现在有伤害自己的想法，请先联系下面任何一个人。\n\n"
+    "全国心理援助热线：12356\n"
+    "北京心理危机研究与干预中心：010-82951332\n"
+    "紧急情况：120\n\n"
+    "我会在这里陪你，但请先照顾好自己。"
+)
+
 # 匹配前去掉空白（含换行）与零宽字符，防止“想 死”这类变形绕过。
-# 用显式转义而不是直接写不可见字符，避免源码里出现看不见的字符。
 _IGNORED_CHARS = re.compile(r"[\s\u200b-\u200f\u2028-\u202f\ufeff]+")
 
 
@@ -79,12 +89,20 @@ def _update_trace(state: AgentState, **fields) -> dict:
     return trace
 
 
-async def analyze(state: AgentState) -> dict:
-    """规则版 analyze：一次产出风险、情绪、意图。
+def _get_writer():
+    """获取 LangGraph 的自定义流写入器。
 
-    S6 会替换为单次 LLM 结构化调用，同时产出 queries 与 followup_hint。
-    规则版仍然保留，作为模型不可用时的安全检查兜底。
+    非流式调用（脚本 ainvoke）时没有 writer，返回 None，
+    节点仍然能正常生成完整回复。
     """
+    try:
+        return get_stream_writer()
+    except Exception:
+        return None
+
+
+async def analyze(state: AgentState) -> dict:
+    """规则版 analyze：一次产出风险、情绪、意图。"""
     raw = _last_user_text(state)
     text = _normalize(raw)  # 匹配用归一化文本，回显仍用原文
 
@@ -117,10 +135,7 @@ async def analyze(state: AgentState) -> dict:
 
 
 def _compose(state: AgentState, branch: str, directive: str) -> dict:
-    """四个 compose 分支的公共逻辑。
-
-    S1 只记录分支与指令；S2 起这里会真正组装 system + 记忆 + 窗口消息。
-    """
+    """四个 compose 分支的公共逻辑：记录分支与本轮指令。"""
     return {
         "branch": branch,
         "trace": _update_trace(state, branch=branch, directive=directive),
@@ -147,22 +162,75 @@ async def compose_normal(state: AgentState) -> dict:
     return _compose(state, "normal", "自然对话，保持人设语气")
 
 
-async def generate(state: AgentState) -> dict:
-    """S1 占位回复：不调用模型，只回显分支与输入。
+def _build_system_prompt(state: AgentState) -> str:
+    """人设 prompt + 本轮分支指令。"""
+    persona = state.get("persona") or {}
+    base = persona.get("system_prompt") or "你是一个温柔、真诚的陪伴者。"
+    directive = (state.get("trace") or {}).get("directive", "")
+    return f"{base}\n\n本轮回应要求：{directive}" if directive else base
 
-    回显限制在 50 字以内；S2 会被真实流式生成替换。
+
+def _to_openai_messages(state: AgentState) -> list[dict]:
+    """把最近 8 轮消息转成 OpenAI 格式。
+
+    S2 先用固定条数窗口；S3 再加 token 预算与优先级裁剪。
     """
-    raw = _last_user_text(state)
-    preview = raw if len(raw) <= 50 else raw[:50] + "…"
+    history = list(state.get("messages", []))
+    if len(history) > 16:
+        history = history[-16:]
+        # 按条数裁剪可能从一条 assistant 开始，而它对应的用户提问已被裁掉；
+        # 丢掉开头的非用户消息，保证窗口从一条用户提问开始。
+        while history and getattr(history[0], "type", "") != "human":
+            history = history[1:]
+
+    result: list[dict] = []
+    for message in history:
+        role = {"human": "user", "ai": "assistant"}.get(getattr(message, "type", ""))
+        content = getattr(message, "content", "")
+        if role and isinstance(content, str):
+            result.append({"role": role, "content": content})
+    return result
+
+
+async def generate(state: AgentState) -> dict:
+    """生成回复。
+
+    安全分支不调用模型，直接输出固定话术；
+    其余分支调用 DeepSeek 流式生成，并逐 token 写入自定义流。
+    """
     branch = state.get("branch", "normal")
-    reply = f"【S1 骨架】当前分支：{branch}。收到：{preview}"
+    writer = _get_writer()
+
+    if branch == "safety":
+        if writer:
+            writer({"type": "token", "text": SAFETY_REPLY})
+        return {
+            "messages": [AIMessage(content=SAFETY_REPLY)],
+            "trace": _update_trace(state, generate={"mode": "fixed_safety"}),
+        }
+
+    messages = [{"role": "system", "content": _build_system_prompt(state)}]
+    messages.extend(_to_openai_messages(state))
+
+    parts: list[str] = []
+    async for token in stream_chat(messages):
+        parts.append(token)
+        if writer:
+            writer({"type": "token", "text": token})
+
+    content = "".join(parts).strip()
+    if not content:
+        content = "（我这边没有生成出内容，再和我说一次好吗？）"
+        if writer:
+            writer({"type": "token", "text": content})
+
     return {
-        "messages": [AIMessage(content=reply)],
-        "trace": _update_trace(state, generate={"rule_based": True}),
+        "messages": [AIMessage(content=content)],
+        "trace": _update_trace(state, generate={"mode": "llm_stream"}),
     }
 
 
 async def reflect(state: AgentState) -> dict:
-    """S1 不写记忆，只记录一次；S4 改成异步抽取并落库。"""
-    logger.info("reflect skipped (S1) branch=%s", state.get("branch"))
-    return {"trace": _update_trace(state, reflect="skipped_in_s1")}
+    """S2 仍不写记忆，只记录一次；S4 改成异步抽取并落库。"""
+    logger.info("reflect skipped (S2) branch=%s", state.get("branch"))
+    return {"trace": _update_trace(state, reflect="skipped_in_s2")}

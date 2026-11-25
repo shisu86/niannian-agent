@@ -5,7 +5,7 @@
 这样前端只需要写一套解析逻辑，不用为每个接口单独判断。
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class ApiResponse[T](BaseModel):
@@ -32,3 +32,24 @@ class HealthData(BaseModel):
     status: str
     db: str
     version: str
+
+
+class ChatRequest(BaseModel):
+    """对话请求。thread_id 由前端生成并保存在 localStorage。"""
+
+    # 限定字符集，避免任意字符串成为 checkpoint 键
+    thread_id: str = Field(
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]{8,64}$",
+    )
+    message: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("message")
+    @classmethod
+    def _strip_message(cls, value: str) -> str:
+        """去掉首尾空白与零宽字符；空内容直接拒绝，避免空轮次调用模型。"""
+        cleaned = value.strip().strip("\u200b\u200c\u200d\ufeff")
+        if not cleaned:
+            raise ValueError("message 不能为空")
+        return cleaned

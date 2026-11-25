@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import system
+from app.api import chat, system
 from app.config import BASE_DIR, get_settings
 from app.db import init_db
 from app.errors import error_body, register_exception_handlers
@@ -48,6 +48,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with open_checkpointer(checkpoint_path) as saver:
         app.state.graph = build_graph(saver)
         yield
+        # 关闭前等待后台图任务结束，避免向已关闭的 checkpointer 写入
+        await chat.wait_background_tasks()
 
 
 def create_app() -> FastAPI:
@@ -96,6 +98,7 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(system.router)
+    app.include_router(chat.router)
 
     # 静态目录挂载必须放在所有 /api 路由之后，否则 "/" 会吞掉接口请求。
     # frontend 目录在 S2 才创建，这里先做存在性判断，避免启动报错。

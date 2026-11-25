@@ -16,6 +16,7 @@ from app.graph.nodes import (
 )
 from app.graph.routes import route_after_analyze
 from app.graph.state import AgentState
+from app.services.persona import get_persona
 
 # 四个 compose 分支同构，只差指令片段；统一连到 generate
 COMPOSE_NODES = ("compose_safety", "compose_empathy", "compose_advice", "compose_normal")
@@ -54,10 +55,15 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     return graph.compile(checkpointer=checkpointer)
 
 
-def build_initial_state(user_text: str) -> dict:
+async def build_initial_state(user_text: str) -> dict:
     """组装一轮对话的初始 state。
 
-    S1 只注入用户消息；S2 起会在这里读取 persona 与 time_context。
-    注意：这里不发 LLM 请求，只做数据准备。
+    S2 注入用户消息与当前人设；time_context 留给 S7。
+    这里不发 LLM 请求，只做数据准备。
     """
-    return {"messages": [HumanMessage(content=user_text)], "trace": {}}
+    persona = await get_persona()
+    return {
+        "messages": [HumanMessage(content=user_text)],
+        "persona": persona,
+        "trace": {},
+    }
