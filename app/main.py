@@ -22,6 +22,7 @@ from app.errors import error_body, register_exception_handlers
 from app.graph.checkpointer import open_checkpointer
 from app.graph.main_graph import build_graph
 from app.logging import setup_logging
+from app.services.search import warmup
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # S0 不依赖模型，缺 Key 只警告；S2 接入 LLM 时再强制校验
         logger.warning("未配置 DEEPSEEK_API_KEY，流式对话暂不可用（S0 阶段可忽略）")
     await init_db()  # 建表失败会直接阻断启动，避免带着坏数据库对外服务
+    await warmup()  # 预热 jieba，避免首个聊天请求卡在词典加载上
 
     # checkpointer 的生命周期必须覆盖整个服务运行期：
     # 图在启动时编译一次，所有请求复用同一个实例，禁止每请求新建。

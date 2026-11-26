@@ -13,6 +13,7 @@ from app.graph.nodes import (
     compose_safety,
     generate,
     reflect,
+    retrieve,
 )
 from app.graph.routes import route_after_analyze
 from app.graph.state import AgentState
@@ -29,6 +30,7 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     """
     graph = StateGraph(AgentState)
     graph.add_node("analyze", analyze)
+    graph.add_node("retrieve", retrieve)
     graph.add_node("compose_safety", compose_safety)
     graph.add_node("compose_empathy", compose_empathy)
     graph.add_node("compose_advice", compose_advice)
@@ -37,8 +39,9 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     graph.add_node("reflect", reflect)
 
     graph.add_edge(START, "analyze")
+    graph.add_edge("analyze", "retrieve")
     graph.add_conditional_edges(
-        "analyze",
+        "retrieve",
         route_after_analyze,
         {
             "safety": "compose_safety",

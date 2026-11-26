@@ -83,6 +83,7 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
         final_state: dict = {}
         started = time.perf_counter()
         done_sent = False
+        memory_sent = False
         try:
             async for mode, chunk in graph.astream(
                 initial,
@@ -96,8 +97,20 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
                     continue
 
                 final_state = chunk
+                trace = final_state.get("trace") or {}
+
+                # retrieve 完成后立即告诉前端本轮命中了哪些记忆
+                if not memory_sent and "retrieve" in trace:
+                    items = [
+                        {"id": item["id"], "type": item["type"], "content": item["content"]}
+                        for item in (final_state.get("retrieved") or [])
+                    ]
+                    if items:
+                        await queue.put(("memory", {"items": items}))
+                    memory_sent = True
+
                 # generate 完成后立即收尾，后面的 reflect 仍会在后台跑完
-                if not done_sent and "generate" in (final_state.get("trace") or {}):
+                if not done_sent and "generate" in trace:
                     await _put_terminal(queue, final_state, started)
                     done_sent = True
 
