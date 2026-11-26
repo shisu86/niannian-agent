@@ -12,7 +12,6 @@ from app.graph.nodes import (
     compose_normal,
     compose_safety,
     generate,
-    reflect,
     retrieve,
 )
 from app.graph.routes import route_after_analyze
@@ -36,7 +35,6 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     graph.add_node("compose_advice", compose_advice)
     graph.add_node("compose_normal", compose_normal)
     graph.add_node("generate", generate)
-    graph.add_node("reflect", reflect)
 
     graph.add_edge(START, "analyze")
     graph.add_edge("analyze", "retrieve")
@@ -52,8 +50,9 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     )
     for name in COMPOSE_NODES:
         graph.add_edge(name, "generate")
-    graph.add_edge("generate", "reflect")
-    graph.add_edge("reflect", END)
+    # 图在 generate 后立即结束：记忆抽取是图外异步任务，
+    # 不写会话 checkpoint，避免慢速抽取覆盖下一轮对话。
+    graph.add_edge("generate", END)
 
     return graph.compile(checkpointer=checkpointer)
 

@@ -29,7 +29,8 @@ async def _fake_stream(messages):
     yield "【冒烟】这是一条测试回复。"
 
 
-# 在构图前替换模块级函数，generate 节点会使用这个假流
+# 在构图前替换模块级函数，generate 使用假流，避免真实 API 费用。
+# 记忆抽取已移出图（S4 修复并发覆盖），这里不再需要假抽取。
 nodes.stream_chat = _fake_stream
 
 # (thread_id, 输入, 期望分支)

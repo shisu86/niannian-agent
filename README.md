@@ -147,7 +147,7 @@ uvicorn app.main:app --reload --port 8000
 - [x] LangGraph 主图骨架（条件分支 + checkpointer）
 - [x] 流式对话（S2，DeepSeek + SSE + 最小聊天页）
 - [x] 记忆检索（FTS5 + jieba + 重排）
-- [ ] 记忆沉淀（reflect）
+- [x] 记忆沉淀（reflect 自动抽取 + superseded 冲突消解）
 - [ ] 人设 interrupt 子图
 - [ ] 主动关怀与语音
 - [ ] 评估（Recall@5）与部署

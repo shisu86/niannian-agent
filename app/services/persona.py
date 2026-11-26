@@ -8,7 +8,7 @@ import copy
 import json
 import logging
 
-from app.db import connect
+from app.db import connect, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,40 @@ def _load_list(value: str, default: list) -> list:
     except (TypeError, json.JSONDecodeError):
         return default
     return data if isinstance(data, list) else default
+
+
+async def ensure_persona() -> None:
+    """确保 id=1 存在；不存在时写入默认人设。
+
+    memory_item.persona_id 有外键约束。全新部署时 init_db 不预插 persona，
+    如果第一次 chat 直接走到记忆写入，会因外键失败导致记忆永远写不进去。
+    这里在写入前兜底创建，is_default=1 供 S5 区分"系统兜底"与"用户配置"。
+    """
+    conn = await connect()
+    try:
+        now = utc_now()
+        await conn.execute(
+            """
+            INSERT OR IGNORE INTO persona
+              (id, name, relation, traits, catchphrases, values_json, care_style,
+               system_prompt, version, is_default, created_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+            """,
+            (
+                DEFAULT_PERSONA["name"],
+                DEFAULT_PERSONA["relation"],
+                json.dumps(DEFAULT_PERSONA["traits"], ensure_ascii=False),
+                json.dumps(DEFAULT_PERSONA["catchphrases"], ensure_ascii=False),
+                json.dumps(DEFAULT_PERSONA["values"], ensure_ascii=False),
+                DEFAULT_PERSONA["care_style"],
+                DEFAULT_PERSONA["system_prompt"],
+                now,
+                now,
+            ),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
 
 
 async def get_persona() -> dict:
