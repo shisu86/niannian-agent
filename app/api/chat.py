@@ -21,6 +21,7 @@ from app.errors import AppError, get_trace_id
 from app.graph.main_graph import build_initial_state
 from app.graph.nodes import reflect
 from app.models import ChatRequest
+from app.services.proactive import record_emotion
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,7 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
         done_sent = False
         memory_sent = False
         completed = False
+        emotion_recorded = False
 
         # 同一 thread 串行执行：两轮并发写同一个 checkpoint 会丢消息。
         # 锁只覆盖图，记忆抽取在 finally 里创建任务，运行在锁外。
@@ -160,6 +162,11 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
 
                     final_state = chunk
                     trace = final_state.get("trace") or {}
+
+                    # 每轮只记一次情绪，供主动关怀的低情绪暂停使用
+                    if not emotion_recorded and final_state.get("emotion"):
+                        record_emotion(final_state["emotion"])
+                        emotion_recorded = True
 
                     # retrieve 完成后立即告诉前端本轮命中了哪些记忆
                     if not memory_sent and "retrieve" in trace:

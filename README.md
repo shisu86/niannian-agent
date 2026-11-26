@@ -149,7 +149,8 @@ uvicorn app.main:app --reload --port 8000
 - [x] 记忆检索（FTS5 + jieba + 重排）
 - [x] 记忆沉淀（reflect 自动抽取 + superseded 冲突消解）
 - [x] 人设 interrupt 子图（粘贴对话 → 提取 → 确认）
-- [ ] 主动关怀与语音
+- [x] 主动关怀（待跟进调度、通知、情绪窗口）
+- [ ] 语音
 - [ ] 评估（Recall@5）与部署
 
 ## License

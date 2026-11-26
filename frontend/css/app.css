@@ -136,6 +136,12 @@ h1 {
   color: var(--muted);
 }
 
+/* 主动关怀：与普通回复区分，但保持克制 */
+.bubble.proactive {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+}
+
 .composer {
   display: flex;
   gap: 10px;

@@ -10,12 +10,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import chat, persona, system
+from app.api.proactive import router as proactive_router
 from app.config import BASE_DIR, get_settings
 from app.db import init_db
 from app.errors import error_body, register_exception_handlers
@@ -23,6 +25,7 @@ from app.graph.checkpointer import open_checkpointer
 from app.graph.main_graph import build_graph
 from app.graph.persona_graph import build_persona_graph
 from app.logging import setup_logging
+from app.services.proactive import tick as proactive_tick
 from app.services.search import warmup
 
 logger = logging.getLogger(__name__)
@@ -53,9 +56,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.graph = build_graph(saver)
         # 人设子图与主图共用 checkpointer，但 thread_id 前缀不同，状态互不干扰
         app.state.persona_graph = build_persona_graph(saver)
-        yield
-        # 关闭前等待后台图任务结束，避免向已关闭的 checkpointer 写入
-        await chat.wait_background_tasks()
+
+        # 主动关怀：每 5 分钟扫描一次到期事项；tick 内部已兜住所有异常
+        scheduler = AsyncIOScheduler(timezone=settings.tz)
+        scheduler.add_job(proactive_tick, "interval", minutes=5, id="proactive")
+        scheduler.start()
+        app.state.scheduler = scheduler
+        try:
+            yield
+        finally:
+            scheduler.shutdown(wait=False)
+            # 关闭前等待后台图任务结束，避免向已关闭的 checkpointer 写入
+            await chat.wait_background_tasks()
 
 
 def create_app() -> FastAPI:
@@ -106,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(system.router)
     app.include_router(chat.router)
     app.include_router(persona.router)
+    app.include_router(proactive_router)
 
     # 静态目录挂载必须放在所有 /api 路由之后，否则 "/" 会吞掉接口请求。
     # frontend 目录在 S2 才创建，这里先做存在性判断，避免启动报错。

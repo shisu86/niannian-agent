@@ -90,6 +90,19 @@ class PersonaPayload(BaseModel):
     system_prompt: str = Field(default="", max_length=4000)
 
 
+class SettingsPayload(BaseModel):
+    """主动关怀与语音设置；开关统一用 0/1。"""
+
+    proactive_enabled: int = Field(ge=0, le=1)
+    quiet_start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    quiet_end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    daily_limit: int = Field(ge=0, le=5)
+    low_mood_pause: int = Field(ge=0, le=1)
+    voice_name: str = Field(min_length=3, max_length=64)
+    auto_read: int = Field(ge=0, le=1)
+    asr_enabled: int = Field(ge=0, le=1)
+
+
 class PersonaConfirmRequest(BaseModel):
     """确认人设：persona_thread_id 由 extract 接口返回。"""
 
