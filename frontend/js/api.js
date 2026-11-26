@@ -21,7 +21,11 @@ export async function requestJSON(url, options = {}) {
 
   if (!response.ok || body?.ok === false) {
     const message = body?.error?.message || `请求失败（${response.status}）`;
-    throw new Error(message);
+    // 带上错误码，调用方可以针对 INTERRUPT_NOT_PENDING 等做状态复位
+    const error = new Error(message);
+    error.code = body?.error?.code;
+    error.status = response.status;
+    throw error;
   }
 
   return body?.data ?? body;

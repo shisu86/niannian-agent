@@ -148,7 +148,7 @@ uvicorn app.main:app --reload --port 8000
 - [x] 流式对话（S2，DeepSeek + SSE + 最小聊天页）
 - [x] 记忆检索（FTS5 + jieba + 重排）
 - [x] 记忆沉淀（reflect 自动抽取 + superseded 冲突消解）
-- [ ] 人设 interrupt 子图
+- [x] 人设 interrupt 子图（粘贴对话 → 提取 → 确认）
 - [ ] 主动关怀与语音
 - [ ] 评估（Recall@5）与部署
 

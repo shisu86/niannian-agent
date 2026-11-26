@@ -16,8 +16,11 @@
           <p>陪伴，从记得开始</p>
         </div>
       </div>
-      <!-- AI 身份必须常驻可见，避免用户误以为是真人 -->
-      <span class="badge">AI 扮演</span>
+      <div class="topbar-right">
+        <!-- AI 身份必须常驻可见，避免用户误以为是真人 -->
+        <span class="badge">AI 扮演</span>
+        <button type="button" class="ghost small" id="persona-open">人设</button>
+      </div>
     </header>
 
     <section id="messages" class="messages" aria-live="polite">
@@ -34,6 +37,54 @@
     <p id="status" class="status" role="status"></p>
   </main>
 
+  <!-- 人设弹窗：粘贴对话 → 提取 → 确认，对应后端的 interrupt 流程 -->
+  <div id="persona-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="persona-title">
+      <header class="modal-head">
+        <h2 id="persona-title">设置人设</h2>
+        <button type="button" class="ghost small" id="persona-close" aria-label="关闭">×</button>
+      </header>
+
+      <div id="persona-step-input">
+        <p class="hint">
+          粘贴一段真实对话，用来塑造念念的说话方式。每行格式：说话人：内容。
+          称呼和关系可以留空，系统会从对话里识别。
+        </p>
+        <label>对话内容
+          <textarea id="persona-dialog" rows="8" placeholder="妈妈：又不回来？&#10;我：这周加班，回不去&#10;妈妈：行吧，你自己看着办。"></textarea>
+        </label>
+        <div class="row">
+          <label>称呼<input id="persona-name" maxlength="20" placeholder="示例：妈妈"></label>
+          <label>关系<input id="persona-relation" maxlength="20" placeholder="示例：母亲"></label>
+        </div>
+        <p id="persona-status" class="status" role="status"></p>
+        <div class="modal-actions">
+          <button type="button" class="ghost" id="persona-default">跳过，用默认</button>
+          <button type="button" class="ghost" id="persona-extract">提取人格</button>
+        </div>
+      </div>
+
+      <div id="persona-step-confirm" hidden>
+        <p class="hint">确认或修改后保存，下一轮对话立即生效。</p>
+        <div class="row">
+          <label>称呼<input id="p-name" maxlength="20"></label>
+          <label>关系<input id="p-relation" maxlength="20"></label>
+        </div>
+        <label>性格标签（逗号分隔）<input id="p-traits"></label>
+        <label>口头禅（逗号分隔）<input id="p-catchphrases"></label>
+        <label>行为准则（逗号分隔）<input id="p-values"></label>
+        <label>关心方式<input id="p-care" maxlength="200"></label>
+        <label>人格指令<textarea id="p-prompt" rows="7" maxlength="4000"></textarea></label>
+        <p id="persona-confirm-status" class="status" role="status"></p>
+        <div class="modal-actions">
+          <button type="button" class="ghost" id="persona-back">返回</button>
+          <button type="button" id="persona-confirm">确认使用</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/js/chat.js"></script>
+  <script type="module" src="/js/persona.js"></script>
 </body>
 </html>

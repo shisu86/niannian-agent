@@ -53,3 +53,49 @@ class ChatRequest(BaseModel):
         if not cleaned:
             raise ValueError("message 不能为空")
         return cleaned
+
+    @field_validator("thread_id")
+    @classmethod
+    def _reject_persona_prefix(cls, value: str) -> str:
+        """p- 前缀保留给人设子图，避免两图共用 thread_id 互相污染状态。"""
+        if value.startswith("p-"):
+            raise ValueError("thread_id 不能使用 p- 前缀")
+        return value
+
+
+class MessageItem(BaseModel):
+    """人设提取用的一条对话；is_target 标记是否为要模仿的人。"""
+
+    text: str = Field(min_length=1, max_length=2000)
+    is_target: bool = False
+
+
+class PersonaExtractRequest(BaseModel):
+    """人设提取请求：一段对话 + 可选的称呼/关系提示。"""
+
+    messages: list[MessageItem] = Field(min_length=1, max_length=500)
+    name_hint: str = Field(default="", max_length=20)
+    relation_hint: str = Field(default="", max_length=20)
+
+
+class PersonaPayload(BaseModel):
+    """人设内容。values 是对外字段，落库写 values_json。"""
+
+    name: str = Field(default="", max_length=20)
+    relation: str = Field(default="", max_length=20)
+    traits: list[str] = Field(default_factory=list, max_length=10)
+    catchphrases: list[str] = Field(default_factory=list, max_length=10)
+    values: list[str] = Field(default_factory=list, max_length=10)
+    care_style: str = Field(default="", max_length=200)
+    system_prompt: str = Field(default="", max_length=4000)
+
+
+class PersonaConfirmRequest(BaseModel):
+    """确认人设：persona_thread_id 由 extract 接口返回。"""
+
+    persona_thread_id: str = Field(
+        min_length=3,
+        max_length=64,
+        pattern=r"^p-[A-Za-z0-9]{4,32}$",
+    )
+    persona: PersonaPayload

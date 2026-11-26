@@ -179,6 +179,11 @@ button:disabled {
   cursor: default;
 }
 
+/* 按下有轻微下沉，松开后执行，和弹窗里的两个操作保持一致 */
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .status {
   margin: 0;
   padding: 0 22px 10px;
@@ -199,4 +204,123 @@ button:disabled {
   .bubble {
     max-width: 86%;
   }
+}
+
+/* --- 人设弹窗 --- */
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--accent-ink);
+  border: 1px solid var(--line);
+}
+
+button.ghost:hover {
+  border-color: var(--accent);
+}
+
+button.small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(46, 41, 37, .42);
+}
+
+/* 作者样式 display:flex 会覆盖 hidden 的默认 display:none，必须显式兜住 */
+.modal[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 22px;
+  border-radius: 20px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.modal-card label {
+  display: block;
+  margin: 10px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.modal-card input,
+.modal-card textarea {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.modal-card input {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.modal-card input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+}
+
+.row label {
+  flex: 1;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 占位文字统一调淡：避免看起来像已经填好的真实内容 */
+::placeholder {
+  color: #C8BEB2;
+  opacity: 1;
 }
