@@ -9,11 +9,13 @@ S6 会把 analyze 换成结构化 LLM 调用；当前规则版作为极端输入
 
 import logging
 import re
+import time
 
 from langchain_core.messages import AIMessage
 from langgraph.config import get_stream_writer
 
 from app.graph.state import AgentState
+from app.services.analyze import analyze_message, clean_queries
 from app.services.llm import stream_chat
 from app.services.memory import (
     MIN_USER_TEXT_LEN,
@@ -113,9 +115,8 @@ def _get_writer():
         return None
 
 
-async def analyze(state: AgentState) -> dict:
-    """规则版 analyze：一次产出风险、情绪、意图。"""
-    raw = _last_user_text(state)
+def _rule_analyze(raw: str) -> dict:
+    """关键词规则版：LLM 失败时的降级路径，也是危机检测的第一道闸。"""
     text = _normalize(raw)  # 匹配用归一化文本，回显仍用原文
 
     risk_level = "crisis" if any(word in text for word in CRISIS_WORDS) else "normal"
@@ -131,17 +132,70 @@ async def analyze(state: AgentState) -> dict:
         emotion = "calm"
 
     intent = "help" if any(word in text for word in HELP_WORDS) else "chat"
-
-    logger.info("analyze risk=%s emotion=%s intent=%s", risk_level, emotion, intent)
     return {
         "risk_level": risk_level,
         "emotion": emotion,
         "intent": intent,
-        "queries": [raw] if raw else [],  # S6 换成 LLM 生成的多条 query
-        "followup_hint": [],  # S7 由 LLM 抽取待跟进事项
+        # 规则路径也要清洗：用户消息最长 2000 字，整段当 query 会召回惨淡
+        "queries": clean_queries([raw] if raw else [], raw),
+        "followup_hint": [],
+    }
+
+
+def _recent_history(state: AgentState, limit: int = 6) -> list[dict]:
+    """取最近几条对话作为分析语境；当前用户消息单独传，避免重复。"""
+    messages = list(state.get("messages", []))
+    if messages and getattr(messages[-1], "type", "") == "human":
+        messages = messages[:-1]
+
+    history: list[dict] = []
+    for message in messages[-limit:]:
+        role = {"human": "user", "ai": "assistant"}.get(getattr(message, "type", ""))
+        content = getattr(message, "content", "")
+        if role and isinstance(content, str):
+            history.append({"role": role, "content": content})
+    return history
+
+
+async def analyze(state: AgentState) -> dict:
+    """LLM 结构化分析；危机规则优先，模型失败降级规则版。"""
+    raw = _last_user_text(state)
+    rule = _rule_analyze(raw)
+    started = time.perf_counter()
+
+    if rule["risk_level"] == "crisis":
+        # 安全不能依赖模型：命中危机词就直接走安全分支，连模型都不调
+        result = rule
+        mode = "rule_crisis"
+    else:
+        try:
+            result = await analyze_message(raw, _recent_history(state))
+            mode = "llm"
+        except Exception:
+            logger.exception("analyze llm failed, fallback to rules")
+            result = rule
+            mode = "rule_fallback"
+
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    queries = result.get("queries") or clean_queries([], raw)
+    logger.info(
+        "analyze mode=%s risk=%s emotion=%s intent=%s queries=%s latency_ms=%s",
+        mode,
+        result["risk_level"],
+        result["emotion"],
+        result["intent"],
+        len(queries),
+        latency_ms,
+    )
+    return {
+        "risk_level": result["risk_level"],
+        "emotion": result["emotion"],
+        "intent": result["intent"],
+        "queries": queries,
+        "followup_hint": result.get("followup_hint") or [],
         "trace": _update_trace(
             state,
-            analyze={"rule_based": True, "length": len(raw)},
+            analyze={"mode": mode, "latency_ms": latency_ms, "query_count": len(queries)},
         ),
     }
 

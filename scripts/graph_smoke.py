@@ -12,14 +12,22 @@
 """
 
 import asyncio
+import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
+
+# 隔离业务库：retrieve 命中会 UPDATE hit_count，不能写到真实 data/app.db
+_TMP_DB_DIR = tempfile.mkdtemp(prefix="niannian-graph-smoke-")
+os.environ["APP_DB_PATH"] = str(Path(_TMP_DB_DIR) / "app.db")
 
 # 允许直接以脚本方式运行：把项目根加入模块搜索路径
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # noqa: E402
 
 import app.graph.nodes as nodes  # noqa: E402
 from app.config import BASE_DIR  # noqa: E402
+from app.db import init_db  # noqa: E402
 from app.graph.checkpointer import open_checkpointer  # noqa: E402
 from app.graph.main_graph import build_graph, build_initial_state  # noqa: E402
 
@@ -29,9 +37,15 @@ async def _fake_stream(messages):
     yield "【冒烟】这是一条测试回复。"
 
 
-# 在构图前替换模块级函数，generate 使用假流，避免真实 API 费用。
+async def _fake_analyze(user_text: str, history: list[dict]) -> dict:
+    """冒烟用假分析：直接套规则版，保持原有分支断言，不产生费用。"""
+    return nodes._rule_analyze(user_text)
+
+
+# 在构图前替换模块级函数，避免真实 API 费用。
 # 记忆抽取已移出图（S4 修复并发覆盖），这里不再需要假抽取。
 nodes.stream_chat = _fake_stream
+nodes.analyze_message = _fake_analyze
 
 # (thread_id, 输入, 期望分支)
 CASES = [
@@ -59,6 +73,7 @@ async def main() -> None:
     failures: list[str] = []
 
     try:
+        await init_db()
         # 复用生产路径：open_checkpointer 负责建目录、建连接、显式 setup
         async with open_checkpointer(db_path) as saver:
             graph = build_graph(saver)
@@ -91,6 +106,7 @@ async def main() -> None:
     finally:
         # 即使中途断言失败，也不留下临时库
         _cleanup(db_path)
+        shutil.rmtree(_TMP_DB_DIR, ignore_errors=True)
 
     if failures:
         raise SystemExit(f"FAILED: {failures}")

@@ -13,7 +13,8 @@ def route_after_analyze(state: AgentState) -> str:
     """
     if state.get("risk_level") == "crisis":
         return "safety"
-    if state.get("emotion") in ("low", "anxious"):
+    # elevated 是模型判定的中间风险：不走求助话术，但先共情
+    if state.get("risk_level") == "elevated" or state.get("emotion") in ("low", "anxious"):
         return "empathy"
     if state.get("intent") == "help":
         return "advice"
