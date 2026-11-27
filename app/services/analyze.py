@@ -43,9 +43,13 @@ ANALYZE_PROMPT = """你是对话分析器。根据最近对话和用户最新一
 规则：
 1. intent：chat=闲聊，vent=倾诉，help=求助或要建议，recall=回忆过去，farewell=告别。
 2. emotion：calm=平稳，low=低落/疲惫，anxious=焦虑/紧张，happy=开心。
-3. risk_level 只看用户最新一条消息：出现自伤、自杀、绝望等表达时给 crisis；
-   明显的强烈痛苦给 elevated；其余 normal。历史消息只用于理解语境，不参与风险判断。
-4. queries 用于检索记忆，2-3 条，每条不超过 20 字；一条取原意关键词，一条可做同义改写。
+3. risk_level 只看用户最新一条消息：该消息表达自伤、自杀、绝望时给 crisis；
+   明显的强烈痛苦但不涉及自伤时给 elevated；
+   单纯的问候、寒暄（你好、在吗、早上好）为 normal；
+   短句本身含自伤、自杀含义时仍必须给 crisis；
+   历史消息中的危机表达不代表本轮风险，只用于理解语境。
+4. queries 用于检索与用户最新消息相关的长期记忆，2-3 条，每条不超过 20 字；
+   一条取原意关键词，一条可做同义改写；不要检索历史里提过、但本轮没提的话题。
 5. followup_hint 是以后要跟进的具体事项，没有就返回空数组；due_at 可留 null。
 6. 只根据对话判断，不要编造。
 
@@ -126,6 +130,32 @@ def _build_input(user_text: str, history: list[dict]) -> str:
     # 最新消息也限长，避免接近 2000 字的长文把输入撑大、拖到超时
     latest = user_text[:MAX_USER_TEXT_CHARS]
     return f"最近对话：\n{context}\n\n用户最新消息：{latest}\n\n请输出 JSON。"
+
+
+SECOND_CHECK_PROMPT = """你是危机复核器。判断用户最新一条消息本身是否表达自伤、自杀或绝望意图。
+
+历史消息只用于理解语境；只有最新消息明确表达时才返回 true。
+
+只输出 JSON：{"is_crisis": true} 或 {"is_crisis": false}"""
+
+
+async def confirm_crisis(user_text: str, history: list[dict]) -> bool:
+    """模型判危机后的二次确认。
+
+    返回 False 表示最新消息本身没有危机含义（可降级为 elevated）；
+    输出不合法或超时由调用方保守处理，继续按危机执行。
+    """
+    messages = [
+        {"role": "system", "content": SECOND_CHECK_PROMPT},
+        {"role": "user", "content": _build_input(user_text, history)},
+    ]
+    async with asyncio.timeout(ANALYZE_TIMEOUT_SECONDS):
+        data = await complete_json(messages, temperature=0.0)
+
+    value = data.get("is_crisis")
+    if not isinstance(value, bool):
+        raise ValueError("second check output invalid")
+    return value
 
 
 async def analyze_message(user_text: str, history: list[dict]) -> dict:

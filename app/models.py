@@ -5,6 +5,8 @@
 这样前端只需要写一套解析逻辑，不用为每个接口单独判断。
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -90,6 +92,34 @@ class PersonaPayload(BaseModel):
     system_prompt: str = Field(default="", max_length=4000)
 
 
+VOICE_PATTERN = r"^[a-z]{2,}-[A-Z]{2,}-[A-Za-z0-9-]+Neural$"
+
+
+class TTSRequest(BaseModel):
+    """语音合成请求；rate/pitch/volume 显式传入时覆盖情绪映射。"""
+
+    text: str = Field(min_length=1, max_length=2000)
+    voice: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=64,
+        pattern=VOICE_PATTERN,
+    )
+    emotion: Literal["calm", "low", "anxious", "happy"] | None = None
+    rate: str | None = Field(default=None, max_length=10, pattern=r"^[+-]\d{1,3}%$")
+    pitch: str | None = Field(default=None, max_length=10, pattern=r"^[+-]\d{1,3}Hz$")
+    volume: str | None = Field(default=None, max_length=10, pattern=r"^[+-]\d{1,3}%$")
+
+    @field_validator("text")
+    @classmethod
+    def _strip_text(cls, value: str) -> str:
+        """纯空白不产生音频，直接拒绝，避免落入 502。"""
+        cleaned = value.strip().strip("\u200b\u200c\u200d\ufeff")
+        if not cleaned:
+            raise ValueError("text 不能为空")
+        return cleaned
+
+
 class SettingsPayload(BaseModel):
     """主动关怀与语音设置；开关统一用 0/1。"""
 
@@ -98,7 +128,8 @@ class SettingsPayload(BaseModel):
     quiet_end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     daily_limit: int = Field(ge=0, le=5)
     low_mood_pause: int = Field(ge=0, le=1)
-    voice_name: str = Field(min_length=3, max_length=64)
+    # 与 TTSRequest 共用同一套音色格式，避免写入后朗读全部失败
+    voice_name: str = Field(min_length=3, max_length=64, pattern=VOICE_PATTERN)
     auto_read: int = Field(ge=0, le=1)
     asr_enabled: int = Field(ge=0, le=1)
 

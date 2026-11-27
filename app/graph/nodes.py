@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage
 from langgraph.config import get_stream_writer
 
 from app.graph.state import AgentState
-from app.services.analyze import analyze_message, clean_queries
+from app.services.analyze import analyze_message, clean_queries, confirm_crisis
 from app.services.llm import stream_chat
 from app.services.memory import (
     MIN_USER_TEXT_LEN,
@@ -72,10 +72,52 @@ SAFETY_REPLY = (
 # 匹配前去掉空白（含换行）与零宽字符，防止“想 死”这类变形绕过。
 _IGNORED_CHARS = re.compile(r"[\s\u200b-\u200f\u2028-\u202f\ufeff]+")
 
+# 只有明确的问候/寒暄才允许降级；白名单之外一律不降级，避免漏掉"割腕""自尽"
+_GREETING_WORDS = (
+    "你好",
+    "您好",
+    "在吗",
+    "在么",
+    "早上好",
+    "早安",
+    "午安",
+    "晚上好",
+    "晚安",
+    "嗨",
+    "哈喽",
+    "hello",
+    "hi",
+    "谢谢",
+    "多谢",
+    "好的",
+    "好",
+    "嗯",
+    "哦",
+    "收到",
+    "辛苦了",
+)
+
+# 问候句最长长度；超过后更像正常表达，不再按寒暄处理
+_GREETING_MAX_LEN = 8
+
 
 def _normalize(text: str) -> str:
     """归一化用户输入：去掉空白、换行与零宽字符。"""
     return _IGNORED_CHARS.sub("", text)
+
+
+def _looks_like_short_greeting(text: str) -> bool:
+    """只有明确的问候/寒暄才返回 True。
+
+    用白名单而不是"没有负面词"：否则"割腕""自尽"这类短句会被误放行。
+    白名单之外的短回答（如"有""想"）需要保留历史语境，不能当寒暄。
+    """
+    cleaned = _normalize(text).lower()
+    if not cleaned or len(cleaned) > _GREETING_MAX_LEN:
+        return False
+    if any(word in cleaned for word in CRISIS_WORDS + LOW_WORDS + ANXIOUS_WORDS + HELP_WORDS):
+        return False
+    return any(cleaned.startswith(word) for word in _GREETING_WORDS)
 
 
 def _last_text(messages: list, role: str, limit: int | None = None) -> str:
@@ -168,9 +210,41 @@ async def analyze(state: AgentState) -> dict:
         result = rule
         mode = "rule_crisis"
     else:
+        greeting = _looks_like_short_greeting(raw)
         try:
-            result = await analyze_message(raw, _recent_history(state))
-            mode = "llm"
+            # 寒暄不需要历史语境，避免旧话题把风险和查询带偏
+            history = [] if greeting else _recent_history(state)
+            result = await analyze_message(raw, history)
+            if result["risk_level"] == "crisis" and greeting:
+                # 模型把"你好""在吗"这类短寒暄误判成危机；降级为正常
+                logger.warning("downgrade short greeting misjudged as crisis")
+                result = {
+                    **result,
+                    "risk_level": "normal",
+                    "emotion": rule["emotion"],
+                    "intent": rule["intent"],
+                    "queries": clean_queries([raw], raw),
+                    "followup_hint": [],
+                }
+                mode = "llm_guarded"
+            elif result["risk_level"] == "crisis":
+                # 模型判危机但不属于问候：再确认最新消息本身是否有危机含义
+                try:
+                    if await confirm_crisis(raw, history):
+                        mode = "llm"
+                    else:
+                        logger.info("crisis second check downgraded to elevated")
+                        result = {**result, "risk_level": "elevated"}
+                        mode = "llm_rechecked"
+                except Exception:
+                    # 复核失败时保守保持危机，不能因为确认不了就放行
+                    logger.exception("crisis second check failed, keep crisis")
+                    mode = "llm_check_failed"
+            else:
+                if greeting:
+                    # 只用原句检索，不把历史里的危机话题带进来
+                    result = {**result, "queries": clean_queries([raw], raw)}
+                mode = "llm"
         except Exception:
             logger.exception("analyze llm failed, fallback to rules")
             result = rule

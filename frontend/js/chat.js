@@ -83,19 +83,29 @@ form.addEventListener('submit', async (event) => {
           if (data.branch === 'safety') {
             bubble.classList.add('safety');
           }
+          // 存到气泡上，朗读时带上情绪，后端才能调语速音调
+          if (data.emotion) bubble.dataset.emotion = data.emotion;
         },
         error(data) {
           setStatus(data.message || '出错了');
+          // 失败轮次不参与自动朗读（占位文字会被读出来）
+          bubble.dataset.failed = '1';
           if (!bubble.textContent) bubble.textContent = '（没有收到回复）';
         },
         done() {
           bubble.classList.remove('typing');
           setStatus('');
+          // 通知语音模块：这一轮回复完整了，自动朗读模式可以开读
+          document.dispatchEvent(
+            new CustomEvent('niannian:reply-done', { detail: { bubble } }),
+          );
         },
       },
     );
   } catch (error) {
     setStatus(error.message || '网络错误');
+    // 连接中断时可能只有半截回复，同样不朗读
+    bubble.dataset.failed = '1';
     if (!bubble.textContent) bubble.textContent = '（连接失败）';
   } finally {
     bubble.classList.remove('typing');

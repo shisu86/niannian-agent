@@ -19,6 +19,9 @@
       <div class="topbar-right">
         <!-- AI 身份必须常驻可见，避免用户误以为是真人 -->
         <span class="badge">AI 扮演</span>
+        <select id="voice-select" class="voice-select" aria-label="朗读音色"></select>
+        <button type="button" class="ghost small" id="mic">语音</button>
+        <button type="button" class="ghost small" id="speak-toggle" aria-pressed="false">朗读</button>
         <button type="button" class="ghost small" id="persona-open">人设</button>
       </div>
     </header>
@@ -35,6 +38,7 @@
       <button type="submit" id="send">发送</button>
     </form>
     <p id="status" class="status" role="status"></p>
+    <p id="voice-status" class="status" role="status"></p>
   </main>
 
   <!-- 人设弹窗：粘贴对话 → 提取 → 确认，对应后端的 interrupt 流程 -->
@@ -87,5 +91,6 @@
   <script type="module" src="/js/chat.js"></script>
   <script type="module" src="/js/persona.js"></script>
   <script type="module" src="/js/proactive.js"></script>
+  <script type="module" src="/js/voice.js"></script>
 </body>
 </html>

@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import chat, persona, system
 from app.api.proactive import router as proactive_router
+from app.api.tts import router as tts_router
 from app.config import BASE_DIR, get_settings
 from app.db import init_db
 from app.errors import error_body, register_exception_handlers
@@ -99,6 +100,9 @@ def create_app() -> FastAPI:
                 status_code=500,
             )
         response.headers["X-Trace-Id"] = request.state.trace_id
+        # 开发期：所有非 API 响应不缓存（含 /、/index.html、JS、CSS），API/SSE 不受影响
+        if not request.url.path.startswith("/api"):
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     # 注意中间件顺序：后添加的 CORS 位于 trace_id 外层。
@@ -119,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(persona.router)
     app.include_router(proactive_router)
+    app.include_router(tts_router)
 
     # 静态目录挂载必须放在所有 /api 路由之后，否则 "/" 会吞掉接口请求。
     # frontend 目录在 S2 才创建，这里先做存在性判断，避免启动报错。

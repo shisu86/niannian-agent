@@ -198,6 +198,11 @@ button:active:not(:disabled) {
   color: var(--muted);
 }
 
+/* 语音状态单独一行，没内容时不占位 */
+#voice-status:empty {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .app {
     box-shadow: none;
@@ -209,6 +214,11 @@ button:active:not(:disabled) {
 
   .bubble {
     max-width: 86%;
+  }
+
+  /* 窄屏顶栏放不下音色下拉，保留按钮即可 */
+  .voice-select {
+    display: none;
   }
 }
 
@@ -233,6 +243,29 @@ button.ghost:hover {
 button.small {
   padding: 6px 10px;
   font-size: 12px;
+}
+
+/* 录音中/自动朗读开启：用强调色提示当前状态 */
+button.small.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.voice-select {
+  max-width: 110px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.voice-select:focus {
+  border-color: var(--accent);
 }
 
 .modal {
