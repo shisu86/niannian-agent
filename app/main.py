@@ -17,7 +17,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import chat, persona, system
+from app.api.memories import router as memories_router
 from app.api.proactive import router as proactive_router
+from app.api.session import router as session_router
 from app.api.tts import router as tts_router
 from app.config import BASE_DIR, get_settings
 from app.db import init_db
@@ -26,6 +28,7 @@ from app.graph.checkpointer import open_checkpointer
 from app.graph.main_graph import build_graph
 from app.graph.persona_graph import build_persona_graph
 from app.logging import setup_logging
+from app.services.proactive import set_graph as proactive_set_graph
 from app.services.proactive import tick as proactive_tick
 from app.services.search import warmup
 
@@ -44,7 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not settings.deepseek_api_key:
         # S0 不依赖模型，缺 Key 只警告；S2 接入 LLM 时再强制校验
         logger.warning("未配置 DEEPSEEK_API_KEY，流式对话暂不可用（S0 阶段可忽略）")
-    await init_db()  # 建表失败会直接阻断启动，避免带着坏数据库对外服务
+    migrated = await init_db()  # 建表失败会直接阻断启动，避免带着坏数据库对外服务
     await warmup()  # 预热 jieba，避免首个聊天请求卡在词典加载上
 
     # checkpointer 的生命周期必须覆盖整个服务运行期：
@@ -52,9 +55,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     checkpoint_path = Path(settings.checkpoint_db_path)
     if not checkpoint_path.is_absolute():
         checkpoint_path = BASE_DIR / checkpoint_path
+
+    if migrated:
+        # 旧聊天记录属于被清空的单角色会话，checkpoint 一并删除
+        for suffix in ("", "-wal", "-shm"):
+            # 只在启动迁移时执行一次，文件很小，阻塞可忽略
+            Path(str(checkpoint_path) + suffix).unlink(missing_ok=True)  # noqa: ASYNC240
+        logger.warning("legacy chat checkpoints cleared after persona migration")
+
     async with open_checkpointer(checkpoint_path) as saver:
         app.state.checkpointer = saver  # 清理过期人设线程时需要直接删除 checkpoint
         app.state.graph = build_graph(saver)
+        # 主动关怀发送成功后要把消息写回当前会话
+        proactive_set_graph(app.state.graph)
         # 人设子图与主图共用 checkpointer，但 thread_id 前缀不同，状态互不干扰
         app.state.persona_graph = build_persona_graph(saver)
 
@@ -122,8 +135,11 @@ def create_app() -> FastAPI:
     app.include_router(system.router)
     app.include_router(chat.router)
     app.include_router(persona.router)
+    app.include_router(persona.personas_router)
     app.include_router(proactive_router)
     app.include_router(tts_router)
+    app.include_router(session_router)
+    app.include_router(memories_router)
 
     # 静态目录挂载必须放在所有 /api 路由之后，否则 "/" 会吞掉接口请求。
     # frontend 目录在 S2 才创建，这里先做存在性判断，避免启动报错。

@@ -16,6 +16,7 @@ from app.graph.nodes import (
 )
 from app.graph.routes import route_after_analyze
 from app.graph.state import AgentState
+from app.services.conversation import get_thread_persona
 from app.services.persona import get_persona
 
 # 四个 compose 分支同构，只差指令片段；统一连到 generate
@@ -57,15 +58,16 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     return graph.compile(checkpointer=checkpointer)
 
 
-async def build_initial_state(user_text: str) -> dict:
+async def build_initial_state(user_text: str, thread_id: str) -> dict:
     """组装一轮对话的初始 state。
 
-    S2 注入用户消息与当前人设；time_context 留给 S7。
-    这里不发 LLM 请求，只做数据准备。
+    按会话绑定的角色取人设；没有绑定记录时退回默认角色 1。
     """
-    persona = await get_persona()
+    persona_id = await get_thread_persona(thread_id)
+    persona = await get_persona(persona_id)
     return {
         "messages": [HumanMessage(content=user_text)],
         "persona": persona,
+        "persona_id": persona_id,
         "trace": {},
     }

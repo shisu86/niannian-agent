@@ -19,6 +19,8 @@ class AgentState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
     # 当前人设：结构化字段 + system_prompt
     persona: dict
+    # 当前会话绑定的角色 id，用于检索与记忆写入
+    persona_id: int
     # 意图：chat / vent / help / recall / farewell
     intent: str
     # 情绪：calm / low / anxious / happy

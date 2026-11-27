@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 # 字段约束尽量写进 DDL：脏数据在入库阶段就被挡住，比只在 Python 层校验更可靠。
 # 注意：DDL 变更只对新建的库生效，已有库不会自动获得新约束（开发期可删库重建）。
 DDL = """
--- 人设表：单用户单 Agent，固定只有 id=1 一行
+-- 人设表：每个角色一行（妈妈、爸爸、小夏……）
 CREATE TABLE IF NOT EXISTS persona (
-  id            INTEGER PRIMARY KEY CHECK (id = 1),
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL DEFAULT '陪伴者',
   relation      TEXT NOT NULL DEFAULT '朋友',
   traits        TEXT NOT NULL DEFAULT '[]',            -- JSON 数组：性格标签
@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS memory_item (
   content       TEXT NOT NULL,                         -- 记忆正文
   content_tok   TEXT NOT NULL,                         -- jieba 分词后空格连接，供 FTS5 索引
   importance    INTEGER NOT NULL DEFAULT 3 CHECK(importance BETWEEN 1 AND 5),
+  -- shared：住址/工作/健康等基础事实，所有角色可见；personal：只属于当前角色
+  scope         TEXT NOT NULL DEFAULT 'personal'
+                CHECK(scope IN ('personal','shared')),
   status        TEXT NOT NULL DEFAULT 'active'
                 CHECK(status IN ('active','superseded','expired','completed')),
   superseded_by INTEGER REFERENCES memory_item(id) ON DELETE SET NULL,
@@ -71,6 +74,23 @@ CREATE INDEX IF NOT EXISTS idx_mem_due ON memory_item(due_at)
 -- 独立 FTS5 表：索引 content_tok（已分词文本），rowid 与 memory_item.id 对齐。
 -- 不直接对 content 建索引，因为 SQLite 默认分词器对中文基本不可用。
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(content_tok);
+
+-- 删除记忆时同步删除 FTS 行；角色级联删除记忆时也会触发，避免孤儿索引
+CREATE TRIGGER IF NOT EXISTS trg_memory_item_delete
+AFTER DELETE ON memory_item
+BEGIN
+  DELETE FROM memory_fts WHERE rowid = old.id;
+END;
+
+-- 会话与角色绑定：一个 thread 属于一个角色，聊天时按它取 system_prompt
+CREATE TABLE IF NOT EXISTS conversation (
+  thread_id  TEXT PRIMARY KEY,
+  persona_id INTEGER NOT NULL REFERENCES persona(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conv_persona ON conversation(persona_id);
 
 -- 主动消息通知表：前端轮询读取，read_at 为空表示未读
 CREATE TABLE IF NOT EXISTS notifications (
@@ -157,11 +177,10 @@ async def connect() -> aiosqlite.Connection:
         raise
 
 
-async def init_db() -> None:
+async def init_db() -> bool:
     """幂等初始化：建表 + 确保 settings 有默认行。
 
-    persona 不预插：首次对话或用户跳过配置时再创建，
-    避免出现一个空人设干扰"是否已配置"的判断。
+    返回 True 表示检测到旧版单角色表并清空了数据（调用方据此清 checkpoint）。
 
     设置行只在首次创建时使用 .env 里的种子值；
     已存在时 OR IGNORE 跳过，不覆盖用户后来改过的配置。
@@ -171,8 +190,31 @@ async def init_db() -> None:
     quiet_start, _, quiet_end = settings.proactive_default_quiet.partition("-")
 
     conn = await connect()
+    migrated = False
     try:
+        # 旧版 persona 带 CHECK(id=1)，无法容纳多个角色；按用户选择清空重建
+        async with conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='persona'"
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row and "CHECK (id = 1)" in (row[0] or ""):
+            migrated = True
+            await conn.executescript(
+                """
+                DROP TABLE IF EXISTS notifications;
+                DROP TABLE IF EXISTS memory_fts;
+                DROP TABLE IF EXISTS conversation;
+                DROP TABLE IF EXISTS memory_item;
+                DROP TABLE IF EXISTS persona;
+                """
+            )
+            logger.warning("legacy single-persona schema detected, rebuilding")
+
         await conn.executescript(DDL)  # executescript 会隐式提交
+
+        # 清理历史遗留的孤儿 FTS 行（触发器上线前删除的数据）
+        await conn.execute("DELETE FROM memory_fts WHERE rowid NOT IN (SELECT id FROM memory_item)")
+
         await conn.execute(
             """
             INSERT OR IGNORE INTO settings
@@ -191,3 +233,4 @@ async def init_db() -> None:
         # 无论成功失败都关闭连接，避免文件句柄泄漏
         await conn.close()
     logger.info("database ready: %s", app_db_path())
+    return migrated

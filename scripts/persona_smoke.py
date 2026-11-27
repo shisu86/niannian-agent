@@ -116,7 +116,7 @@ async def case_interrupt_and_resume(graph) -> None:
     # 模拟用户在确认弹窗里改了两处
     confirmed = dict(candidates)
     confirmed["traits"] = ["刀子嘴豆腐心", "要强", "爱操心"]
-    await graph.ainvoke(Command(resume=confirmed), config)
+    await graph.ainvoke(Command(resume={"persona": confirmed, "persona_id": 1}), config)
 
     snapshot = await graph.aget_state(config)
     persona = (snapshot.values or {}).get("persona") or {}
@@ -136,7 +136,10 @@ async def case_second_persona(graph) -> None:
         },
         config,
     )
-    await graph.ainvoke(Command(resume=CANDIDATES_DAD), config)
+    await graph.ainvoke(
+        Command(resume={"persona": CANDIDATES_DAD, "persona_id": 1}),
+        config,
+    )
 
     snapshot = await graph.aget_state(config)
     persona = (snapshot.values or {}).get("persona") or {}

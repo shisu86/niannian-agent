@@ -14,7 +14,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from app.services.llm import complete_json
-from app.services.persona import DEFAULT_PERSONA, build_fallback_prompt, save_persona
+from app.services.persona import (
+    DEFAULT_PERSONA,
+    build_fallback_prompt,
+    create_persona,
+    update_persona,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,7 @@ class PersonaState(TypedDict, total=False):
     relation_hint: str
     candidates: dict  # 模型抽取后、等待确认的候选
     persona: dict  # interrupt 恢复后写入，save 节点落库
+    persona_id: int | None  # 为空表示新建角色，有值表示更新
 
 
 def _format_dialog(messages: list[dict]) -> str:
@@ -141,14 +147,29 @@ async def confirm(state: PersonaState) -> dict:
     decision = interrupt(state.get("candidates") or {})
     if not isinstance(decision, dict):
         decision = state.get("candidates") or {}
+
+    if isinstance(decision.get("persona"), dict):
+        # 新格式：{persona, persona_id}，persona_id 为空表示新建角色
+        return {
+            "persona": decision["persona"],
+            "persona_id": decision.get("persona_id"),
+        }
     return {"persona": decision}
 
 
 async def save(state: PersonaState) -> dict:
-    """把确认后的人设写进 persona 表。"""
+    """把确认后的人设写进 persona 表：带 id 更新，否则新建角色。"""
     persona = state.get("persona") or state.get("candidates") or {}
-    saved = await save_persona(persona)
-    logger.info("persona saved version=%s", saved.get("version"))
+    persona_id = state.get("persona_id")
+
+    if persona_id:
+        saved = await update_persona(persona_id, persona)
+        if saved is None:
+            saved = await create_persona(persona)
+    else:
+        saved = await create_persona(persona)
+
+    logger.info("persona saved id=%s version=%s", saved.get("id"), saved.get("version"))
     return {"persona": saved}
 
 

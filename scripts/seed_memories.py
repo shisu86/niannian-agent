@@ -80,11 +80,20 @@ async def seed(reset: bool) -> None:
             async with conn.execute(
                 """
                 INSERT INTO memory_item
-                  (persona_id, type, content, content_tok, importance, status,
+                  (persona_id, type, content, content_tok, importance, scope, status,
                    due_at, created_at, updated_at)
-                VALUES (1, ?, ?, ?, ?, 'active', ?, ?, ?)
+                VALUES (1, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
                 """,
-                (item_type, content, tokenize(content), importance, due_at, now, now),
+                (
+                    item_type,
+                    content,
+                    tokenize(content),
+                    importance,
+                    "shared" if item_type == "fact" else "personal",
+                    due_at,
+                    now,
+                    now,
+                ),
             ) as cursor:
                 memory_id = cursor.lastrowid
             await conn.execute(

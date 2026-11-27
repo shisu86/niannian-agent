@@ -1,3 +1,5 @@
+import { requestJSON } from './api.js';
+
 const micBtn = document.getElementById('mic');
 const speakBtn = document.getElementById('speak-toggle');
 const voiceSelect = document.getElementById('voice-select');
@@ -15,8 +17,10 @@ const VOICES = [
   { id: 'zh-CN-YunyangNeural', label: '云扬 · 播报' },
 ];
 
-const VOICE_KEY = 'niannian.voice';
+const VOICE_KEY_PREFIX = 'niannian.voice.';
+const LEGACY_VOICE_KEY = 'niannian.voice';
 const AUTO_READ_KEY = 'niannian.auto_read';
+const DEFAULT_VOICE = VOICES[0].id;
 
 for (const voice of VOICES) {
   const option = document.createElement('option');
@@ -25,13 +29,39 @@ for (const voice of VOICES) {
   voiceSelect.appendChild(option);
 }
 
-const savedVoice = localStorage.getItem(VOICE_KEY);
-voiceSelect.value = VOICES.some((voice) => voice.id === savedVoice)
-  ? savedVoice
-  : VOICES[0].id;
+function currentPersonaId() {
+  try {
+    const sessions = JSON.parse(localStorage.getItem('niannian.sessions') || '[]');
+    const threadId = localStorage.getItem('niannian.thread_id');
+    const session = sessions.find((item) => item.id === threadId);
+    return session?.persona_id || 1;
+  } catch {
+    return 1;
+  }
+}
+
+function voiceKey(personaId) {
+  return `${VOICE_KEY_PREFIX}${personaId}`;
+}
+
+function loadVoiceForPersona(personaId = currentPersonaId()) {
+  // 每个角色独立音色；没有单独设置过时用默认，并兼容旧的全局音色
+  const saved =
+    localStorage.getItem(voiceKey(personaId)) || localStorage.getItem(LEGACY_VOICE_KEY);
+  voiceSelect.value = VOICES.some((voice) => voice.id === saved) ? saved : DEFAULT_VOICE;
+}
+
+loadVoiceForPersona();
 
 voiceSelect.addEventListener('change', () => {
-  localStorage.setItem(VOICE_KEY, voiceSelect.value);
+  localStorage.setItem(voiceKey(currentPersonaId()), voiceSelect.value);
+});
+
+// 切换会话/角色时，音色跟着当前角色走
+document.addEventListener('niannian:session-changed', (event) => {
+  const personaId = event.detail?.personaId;
+  if (personaId) loadVoiceForPersona(personaId);
+  else loadVoiceForPersona();
 });
 
 // --- 语音输入（Web Speech API，仅 Edge/Chrome 支持）---
@@ -107,7 +137,7 @@ let autoRead = localStorage.getItem(AUTO_READ_KEY) === '1';
 function syncToggle() {
   speakBtn.classList.toggle('active', autoRead);
   speakBtn.setAttribute('aria-pressed', String(autoRead));
-  speakBtn.textContent = autoRead ? '自动朗读' : '朗读';
+  speakBtn.textContent = autoRead ? '语音回复中' : '语音回复';
 }
 
 function resetVoiceUi() {
@@ -293,6 +323,42 @@ syncToggle();
 // 浏览器可能在两次播放之间把 AudioContext 挂起，回复到来时已经没有手势了
 document.addEventListener('pointerdown', () => unlockAudio());
 document.addEventListener('keydown', () => unlockAudio());
+
+// 设置面板保存后，把语音相关开关同步到页面
+function applySettings(settings) {
+  if (!settings) return;
+
+  if (settings.asr_enabled === 0) {
+    micBtn.hidden = true;
+  } else if (canRecognize) {
+    micBtn.hidden = false;
+  }
+
+  const settingAuto = settings.auto_read === 1;
+  if (settingAuto !== autoRead) {
+    autoRead = settingAuto;
+    localStorage.setItem(AUTO_READ_KEY, autoRead ? '1' : '0');
+    syncToggle();
+    if (!autoRead) stopPlayback();
+  }
+
+  // 音色按角色独立，设置面板里的 voice_name 只作为服务端默认，不覆盖角色选择
+}
+
+async function loadVoiceSettings() {
+  try {
+    const data = await requestJSON('/api/settings');
+    applySettings(data.settings);
+  } catch {
+    // 读取失败时沿用本地状态
+  }
+}
+
+document.addEventListener('niannian:settings-changed', (event) => {
+  applySettings(event.detail?.settings);
+});
+
+loadVoiceSettings();
 
 // 兜底触发：即使 chat 脚本没派发事件，也监听气泡的 typing 类被移除
 const messagesEl = document.getElementById('messages');

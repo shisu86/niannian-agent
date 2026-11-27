@@ -16,11 +16,41 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from langchain_core.messages import AIMessage
+
 from app.config import get_settings
 from app.db import connect, utc_now
+from app.services.conversation import get_thread_persona
 from app.services.llm import complete_json
+from app.services.locks import get_thread_lock
+from app.services.session import get_current_thread
 
 logger = logging.getLogger(__name__)
+
+# 主图实例在 lifespan 中注入，用于把主动消息写回会话历史
+_graph = None
+
+
+def set_graph(graph) -> None:
+    global _graph
+    _graph = graph
+
+
+async def _append_to_session(message: str) -> None:
+    """把主动消息写回当前会话，保证下一轮对话知道"自己说过话"。"""
+    thread_id = get_current_thread()
+    if _graph is None or not thread_id:
+        return
+    try:
+        # 与聊天图共用同一把 thread 锁，避免并发覆盖 checkpoint
+        async with get_thread_lock(thread_id):
+            await _graph.aupdate_state(
+                {"configurable": {"thread_id": thread_id}},
+                {"messages": [AIMessage(content=message, name="proactive")]},
+            )
+    except Exception:
+        logger.exception("append proactive message to session failed")
+
 
 MAX_MESSAGE_LEN = 120
 MOOD_WINDOW = 3
@@ -112,8 +142,8 @@ async def _count_sent_today(local_now: datetime) -> int:
         await conn.close()
 
 
-async def _next_due(now_utc: datetime) -> dict | None:
-    """取最早一条到期且未提醒过的 followup。"""
+async def _next_due(now_utc: datetime, persona_id: int) -> dict | None:
+    """取当前角色最早一条到期且未提醒过的 followup。"""
     stamp = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = await connect()
     try:
@@ -121,7 +151,7 @@ async def _next_due(now_utc: datetime) -> dict | None:
             """
             SELECT id, content, due_at, importance
             FROM memory_item
-            WHERE persona_id = 1
+            WHERE (persona_id = ? OR scope = 'shared')
               AND type = 'followup'
               AND status = 'active'
               AND due_at IS NOT NULL
@@ -130,7 +160,7 @@ async def _next_due(now_utc: datetime) -> dict | None:
             ORDER BY due_at ASC
             LIMIT 1
             """,
-            (stamp,),
+            (persona_id, stamp),
         ) as cursor:
             row = await cursor.fetchone()
         return dict(row) if row else None
@@ -188,7 +218,7 @@ async def _release(memory_id: int) -> None:
         await conn.close()
 
 
-async def _expire_stale(cutoff: str) -> int:
+async def _expire_stale(cutoff: str, persona_id: int) -> int:
     """把过期太久的待跟进标成 expired，避免停机恢复后集中补发旧提醒。"""
     conn = await connect()
     try:
@@ -196,14 +226,14 @@ async def _expire_stale(cutoff: str) -> int:
             """
             UPDATE memory_item
             SET status = 'expired', updated_at = ?
-            WHERE persona_id = 1
+            WHERE (persona_id = ? OR scope = 'shared')
               AND type = 'followup'
               AND status = 'active'
               AND notified_at IS NULL
               AND due_at IS NOT NULL
               AND due_at < ?
             """,
-            (utc_now(), cutoff),
+            (utc_now(), persona_id, cutoff),
         )
         await conn.commit()
         return cursor.rowcount
@@ -222,6 +252,8 @@ async def _deliver(memory: dict) -> dict:
 
     try:
         message = await compose_message(memory)
+        # 关联当前会话，前端据此在对应会话上显示未读红点
+        thread_id = get_current_thread() or DEFAULT_THREAD_ID
         conn = await connect()
         try:
             await conn.execute(
@@ -229,7 +261,7 @@ async def _deliver(memory: dict) -> dict:
                 INSERT INTO notifications (thread_id, memory_id, content, created_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (DEFAULT_THREAD_ID, memory["id"], message, now),
+                (thread_id, memory["id"], message, now),
             )
             await conn.commit()
         finally:
@@ -237,6 +269,9 @@ async def _deliver(memory: dict) -> dict:
     except Exception:
         await _release(memory["id"])
         raise
+
+    # 写回会话失败不影响通知本身
+    await _append_to_session(message)
 
     logger.info("proactive sent memory_id=%s", memory["id"])
     return {
@@ -264,8 +299,15 @@ async def run_once(now: datetime | None = None, *, force: bool = False) -> dict:
 
     now_utc = local_now.astimezone(UTC)
     cutoff = (now_utc - timedelta(hours=STALE_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    await _expire_stale(cutoff)
-    memory = await _next_due(now_utc)
+
+    thread_id = get_current_thread()
+    if not thread_id:
+        # 没有打开的会话：发出去也没人能收到，等前端注册后再发
+        return {"skipped": "no_session"}
+
+    persona_id = await get_thread_persona(thread_id)
+    await _expire_stale(cutoff, persona_id)
+    memory = await _next_due(now_utc, persona_id)
     if memory is None:
         # 没有到期事项优先于"到上限"：重复扫描应表现为 nothing_due
         return {"skipped": "nothing_due"}

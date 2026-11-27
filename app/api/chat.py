@@ -21,6 +21,7 @@ from app.errors import AppError, get_trace_id
 from app.graph.main_graph import build_initial_state
 from app.graph.nodes import reflect
 from app.models import ChatRequest
+from app.services.locks import get_thread_lock
 from app.services.proactive import record_emotion
 
 logger = logging.getLogger(__name__)
@@ -29,19 +30,6 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 # 模块级强引用：asyncio 对任务只有弱引用，局部变量无法阻止 GC。
 _background_tasks: set[asyncio.Task] = set()
-
-# 同一 thread 的图任务串行执行。
-# 两轮并发写同一个 checkpoint 时，后写入的一方基于旧快照，会丢消息。
-# 锁只覆盖图本身，记忆抽取在锁外后台执行，不增加用户等待。
-_thread_locks: dict[str, asyncio.Lock] = {}
-
-
-def _get_thread_lock(thread_id: str) -> asyncio.Lock:
-    lock = _thread_locks.get(thread_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _thread_locks[thread_id] = lock
-    return lock
 
 
 # 失败轮次补的占位回复：保证 checkpoint 里用户消息后面一定跟着 AI 消息
@@ -85,6 +73,7 @@ async def _remember(final_state: dict) -> None:
         result = await reflect(
             messages=final_state.get("messages") or [],
             branch=final_state.get("branch") or "normal",
+            persona_id=int(final_state.get("persona_id") or 1),
         )
         logger.info("reflect result: %s", result)
     except Exception:
@@ -132,7 +121,7 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
     graph = request.app.state.graph
     trace_id = get_trace_id(request)
     config = {"configurable": {"thread_id": payload.thread_id}}
-    initial = await build_initial_state(payload.message)
+    initial = await build_initial_state(payload.message, payload.thread_id)
 
     # 无界队列：单轮数据量小，不需要背压
     queue: asyncio.Queue = asyncio.Queue()
@@ -147,7 +136,7 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
 
         # 同一 thread 串行执行：两轮并发写同一个 checkpoint 会丢消息。
         # 锁只覆盖图，记忆抽取在 finally 里创建任务，运行在锁外。
-        async with _get_thread_lock(payload.thread_id):
+        async with get_thread_lock(payload.thread_id):
             try:
                 async for mode, chunk in graph.astream(
                     initial,
@@ -171,7 +160,12 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
                     # retrieve 完成后立即告诉前端本轮命中了哪些记忆
                     if not memory_sent and "retrieve" in trace:
                         items = [
-                            {"id": item["id"], "type": item["type"], "content": item["content"]}
+                            {
+                                "id": item["id"],
+                                "type": item["type"],
+                                "content": item["content"],
+                                "hit_count": item.get("hit_count", 0),
+                            }
                             for item in (final_state.get("retrieved") or [])
                         ]
                         if items:

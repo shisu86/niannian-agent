@@ -1,20 +1,19 @@
-"""人设读取。
+"""人设读写：支持多个角色。
 
-S2 只读取已有 persona；没有时返回默认中性人设，不写库。
-完整的人设塑造、interrupt 确认与版本管理在 S5 实现。
+每个角色一行 persona；会话通过 conversation 表绑定到角色。
+最早的 id=1 仍作为默认角色（首次启动兜底创建）。
 """
 
 import asyncio
 import copy
 import json
 import logging
-import sqlite3
 
 from app.db import connect, utc_now
 
 logger = logging.getLogger(__name__)
 
-# 默认中性人设：用户跳过配置或尚未塑造时使用
+# 默认中性人设：首次启动或角色不存在时使用
 DEFAULT_PERSONA = {
     "name": "念念",
     "relation": "朋友",
@@ -30,8 +29,7 @@ DEFAULT_PERSONA = {
     ),
 }
 
-
-# 人设写入串行化：单进程单 worker，避免"先查再插"的竞态
+# 人设写入串行化：单进程单 worker，避免并发写入互相覆盖
 _persona_lock = asyncio.Lock()
 
 
@@ -42,10 +40,7 @@ def build_fallback_prompt(
     catchphrases: list[str],
     care_style: str,
 ) -> str:
-    """模型没给 system_prompt 时，用结构化字段拼一个可用版本。
-
-    不能直接退回 DEFAULT_PERSONA：那样会出现 name=妈妈、prompt=念念 的错位。
-    """
+    """模型没给 system_prompt 时，用结构化字段拼一个可用版本。"""
     parts = [f"你是{name}，用户的{relation}。"]
     if traits:
         parts.append("性格：" + "、".join(traits) + "。")
@@ -58,7 +53,7 @@ def build_fallback_prompt(
 
 
 def _load_list(value: str, default: list) -> list:
-    """解析 JSON 数组字段；格式异常时退回默认值，避免整个对话失败。"""
+    """解析 JSON 数组字段；格式异常时退回默认值。"""
     try:
         data = json.loads(value)
     except (TypeError, json.JSONDecodeError):
@@ -66,12 +61,11 @@ def _load_list(value: str, default: list) -> list:
     return data if isinstance(data, list) else default
 
 
-async def ensure_persona() -> None:
-    """确保 id=1 存在；不存在时写入默认人设。
+async def ensure_persona(persona_id: int = 1) -> None:
+    """确保指定角色存在；不存在时按默认人设补齐。
 
-    memory_item.persona_id 有外键约束。全新部署时 init_db 不预插 persona，
-    如果第一次 chat 直接走到记忆写入，会因外键失败导致记忆永远写不进去。
-    这里在写入前兜底创建，is_default=1 供 S5 区分"系统兜底"与"用户配置"。
+    多角色下不能固定建 id=1，否则用户删掉默认角色后，
+    任何一次记忆写入都会把"念念"重新建出来。
     """
     conn = await connect()
     try:
@@ -81,9 +75,10 @@ async def ensure_persona() -> None:
             INSERT OR IGNORE INTO persona
               (id, name, relation, traits, catchphrases, values_json, care_style,
                system_prompt, version, is_default, created_at, updated_at)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
             """,
             (
+                persona_id,
                 DEFAULT_PERSONA["name"],
                 DEFAULT_PERSONA["relation"],
                 json.dumps(DEFAULT_PERSONA["traits"], ensure_ascii=False),
@@ -100,46 +95,13 @@ async def ensure_persona() -> None:
         await conn.close()
 
 
-async def get_persona() -> dict:
-    """读取 id=1 的人设；不存在时返回默认人设副本。"""
-    conn = await connect()
-    try:
-        async with conn.execute(
-            """
-            SELECT name, relation, traits, catchphrases, values_json,
-                   care_style, system_prompt
-            FROM persona WHERE id = 1
-            """
-        ) as cursor:
-            row = await cursor.fetchone()
-    finally:
-        await conn.close()
-
-    if row is None:
-        # 深拷贝，避免调用方修改列表后污染模块级默认值
-        return copy.deepcopy(DEFAULT_PERSONA)
-
-    return {
-        "name": row["name"],
-        "relation": row["relation"],
-        "traits": _load_list(row["traits"], []),
-        "catchphrases": _load_list(row["catchphrases"], []),
-        "values": _load_list(row["values_json"], []),
-        "care_style": row["care_style"],
-        # system_prompt 为空时用默认值兜底，保证聊天可用
-        "system_prompt": row["system_prompt"] or DEFAULT_PERSONA["system_prompt"],
-    }
-
-
 def _clean_text(value, limit: int, default: str = "") -> str:
-    """字符串字段清洗：非字符串丢弃、去空白、截断。"""
     if not isinstance(value, str):
         return default
     return value.strip()[:limit] or default
 
 
 def _clean_list(value, max_items: int, max_len: int) -> list[str]:
-    """列表字段清洗：只保留非空字符串，并限制条数与单条长度。"""
     if not isinstance(value, list):
         return []
     result: list[str] = []
@@ -149,8 +111,30 @@ def _clean_list(value, max_items: int, max_len: int) -> list[str]:
     return result
 
 
+def _clean_persona(data: dict) -> dict:
+    """统一清洗，模型抽取、手动创建、编辑共用一套规则。"""
+    name = _clean_text(data.get("name"), 20, DEFAULT_PERSONA["name"])
+    relation = _clean_text(data.get("relation"), 20, DEFAULT_PERSONA["relation"])
+    traits = _clean_list(data.get("traits"), 10, 30)
+    catchphrases = _clean_list(data.get("catchphrases"), 10, 30)
+    values = _clean_list(data.get("values"), 10, 60)
+    care_style = _clean_text(data.get("care_style"), 200)
+    system_prompt = _clean_text(data.get("system_prompt"), 4000)
+    if not system_prompt:
+        system_prompt = build_fallback_prompt(name, relation, traits, catchphrases, care_style)
+
+    return {
+        "name": name,
+        "relation": relation,
+        "traits": traits,
+        "catchphrases": catchphrases,
+        "values": values,
+        "care_style": care_style,
+        "system_prompt": system_prompt,
+    }
+
+
 def _row_to_persona(row) -> dict:
-    """数据库行 → 对外人设对象（values_json 反向映射成 values）。"""
     return {
         "id": row["id"],
         "name": row["name"],
@@ -166,76 +150,164 @@ def _row_to_persona(row) -> dict:
     }
 
 
-async def get_full_persona() -> dict | None:
-    """读取完整人设（含 id/version/is_default）；不存在返回 None。"""
+async def get_persona(persona_id: int = 1) -> dict:
+    """读取聊天用的精简人设；角色不存在时返回默认副本。"""
     conn = await connect()
     try:
-        async with conn.execute("SELECT * FROM persona WHERE id = 1") as cursor:
+        async with conn.execute(
+            """
+            SELECT name, relation, traits, catchphrases, values_json,
+                   care_style, system_prompt
+            FROM persona WHERE id = ?
+            """,
+            (persona_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    if row is None:
+        return copy.deepcopy(DEFAULT_PERSONA)
+
+    return {
+        "name": row["name"],
+        "relation": row["relation"],
+        "traits": _load_list(row["traits"], []),
+        "catchphrases": _load_list(row["catchphrases"], []),
+        "values": _load_list(row["values_json"], []),
+        "care_style": row["care_style"],
+        "system_prompt": row["system_prompt"] or DEFAULT_PERSONA["system_prompt"],
+    }
+
+
+async def get_full_persona(persona_id: int = 1) -> dict | None:
+    conn = await connect()
+    try:
+        async with conn.execute("SELECT * FROM persona WHERE id = ?", (persona_id,)) as cursor:
             row = await cursor.fetchone()
         return _row_to_persona(row) if row else None
     finally:
         await conn.close()
 
 
-async def save_persona(data: dict) -> dict:
-    """写入人设：存在则 version + 1，不存在则新建；返回完整记录。
+async def list_personas() -> list[dict]:
+    """按创建顺序返回所有角色。"""
+    conn = await connect()
+    try:
+        async with conn.execute("SELECT * FROM persona ORDER BY id") as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_persona(row) for row in rows]
+    finally:
+        await conn.close()
 
-    无论模型抽取还是用户直接编辑，都走这里，保证字段清洗规则一致。
-    进程内用锁串行化；INSERT 再兜一层 IntegrityError，防止并发首次写入撞主键。
-    """
-    name = _clean_text(data.get("name"), 20, DEFAULT_PERSONA["name"])
-    relation = _clean_text(data.get("relation"), 20, DEFAULT_PERSONA["relation"])
-    traits = _clean_list(data.get("traits"), 10, 30)
-    catchphrases = _clean_list(data.get("catchphrases"), 10, 30)
-    values = _clean_list(data.get("values"), 10, 60)
-    care_style = _clean_text(data.get("care_style"), 200)
-    system_prompt = _clean_text(data.get("system_prompt"), 4000)
-    if not system_prompt:
-        # 按本次字段拼兜底，不能退回"念念"的默认 prompt
-        system_prompt = build_fallback_prompt(name, relation, traits, catchphrases, care_style)
 
-    insert_sql = """
-        INSERT INTO persona
-          (id, name, relation, traits, catchphrases, values_json, care_style,
-           system_prompt, version, is_default, created_at, updated_at)
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
-        """
-    update_sql = """
-        UPDATE persona
-        SET name = ?, relation = ?, traits = ?, catchphrases = ?,
-            values_json = ?, care_style = ?, system_prompt = ?,
-            version = version + 1, is_default = 0, updated_at = ?
-        WHERE id = 1
-        """
-    params = (
-        name,
-        relation,
-        json.dumps(traits, ensure_ascii=False),
-        json.dumps(catchphrases, ensure_ascii=False),
-        json.dumps(values, ensure_ascii=False),
-        care_style,
-        system_prompt,
-    )
-
+async def create_persona(data: dict) -> dict:
+    """新建角色，返回完整记录。"""
+    fields = _clean_persona(data)
     async with _persona_lock:
         conn = await connect()
         try:
             now = utc_now()
-            async with conn.execute("SELECT version FROM persona WHERE id = 1") as cursor:
-                exists = await cursor.fetchone()
-
-            if exists is None:
-                try:
-                    await conn.execute(insert_sql, (*params, now, now))
-                except sqlite3.IntegrityError:
-                    # 极端并发下另一个写入刚插入，退回更新
-                    await conn.execute(update_sql, (*params, now))
-            else:
-                await conn.execute(update_sql, (*params, now))
+            cursor = await conn.execute(
+                """
+                INSERT INTO persona
+                  (name, relation, traits, catchphrases, values_json, care_style,
+                   system_prompt, version, is_default, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
+                """,
+                (
+                    fields["name"],
+                    fields["relation"],
+                    json.dumps(fields["traits"], ensure_ascii=False),
+                    json.dumps(fields["catchphrases"], ensure_ascii=False),
+                    json.dumps(fields["values"], ensure_ascii=False),
+                    fields["care_style"],
+                    fields["system_prompt"],
+                    now,
+                    now,
+                ),
+            )
+            new_id = cursor.lastrowid
             await conn.commit()
 
-            async with conn.execute("SELECT * FROM persona WHERE id = 1") as cursor:
-                saved = await cursor.fetchone()
-            return _row_to_persona(saved)
+            async with conn.execute("SELECT * FROM persona WHERE id = ?", (new_id,)) as cur:
+                row = await cur.fetchone()
+            return _row_to_persona(row)
+        finally:
+            await conn.close()
+
+
+async def update_persona(persona_id: int, data: dict) -> dict | None:
+    """更新指定角色，version + 1；不存在返回 None。"""
+    fields = _clean_persona(data)
+    async with _persona_lock:
+        conn = await connect()
+        try:
+            cursor = await conn.execute(
+                """
+                UPDATE persona
+                SET name = ?, relation = ?, traits = ?, catchphrases = ?,
+                    values_json = ?, care_style = ?, system_prompt = ?,
+                    version = version + 1, is_default = 0, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    fields["name"],
+                    fields["relation"],
+                    json.dumps(fields["traits"], ensure_ascii=False),
+                    json.dumps(fields["catchphrases"], ensure_ascii=False),
+                    json.dumps(fields["values"], ensure_ascii=False),
+                    fields["care_style"],
+                    fields["system_prompt"],
+                    utc_now(),
+                    persona_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                await conn.rollback()
+                return None
+            await conn.commit()
+
+            async with conn.execute("SELECT * FROM persona WHERE id = ?", (persona_id,)) as cur:
+                row = await cur.fetchone()
+            return _row_to_persona(row)
+        finally:
+            await conn.close()
+
+
+async def save_persona(data: dict, persona_id: int = 1) -> dict:
+    """兼容旧调用：更新指定角色，不存在则新建。"""
+    existing = await get_full_persona(persona_id)
+    if existing is not None:
+        updated = await update_persona(persona_id, data)
+        return updated or existing
+    return await create_persona(data)
+
+
+async def delete_persona(persona_id: int) -> bool:
+    """删除角色；外键级联删除会话和记忆，并清理相关通知。"""
+    async with _persona_lock:
+        conn = await connect()
+        try:
+            async with conn.execute(
+                "SELECT thread_id FROM conversation WHERE persona_id = ?",
+                (persona_id,),
+            ) as cursor:
+                thread_ids = [row["thread_id"] for row in await cursor.fetchall()]
+
+            if thread_ids:
+                placeholders = ",".join("?" for _ in thread_ids)
+                # 通知表没有外键级联，必须显式清理
+                await conn.execute(
+                    f"DELETE FROM notifications WHERE thread_id IN ({placeholders})",  # noqa: S608
+                    thread_ids,
+                )
+
+            cursor = await conn.execute("DELETE FROM persona WHERE id = ?", (persona_id,))
+            if cursor.rowcount == 0:
+                await conn.rollback()
+                return False
+            await conn.commit()
+            return True
         finally:
             await conn.close()

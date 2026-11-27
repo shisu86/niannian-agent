@@ -167,12 +167,18 @@ async function handleConfirm() {
   confirmBtn.disabled = true;
   setStatus(confirmStatusEl, '正在保存…');
   try {
-    await requestJSON('/api/persona/confirm', {
+    const result = await requestJSON('/api/persona/confirm', {
       method: 'POST',
       body: JSON.stringify({ persona_thread_id: personaThreadId, persona }),
     });
     saved = true;
     setStatus(confirmStatusEl, '已保存');
+    // 让左侧角色列表和右侧人设卡片立即刷新
+    document.dispatchEvent(
+      new CustomEvent('niannian:persona-changed', {
+        detail: { personaId: result.persona?.id },
+      }),
+    );
     setTimeout(closeModal, 600);
   } catch (error) {
     if (error.code === 'INTERRUPT_NOT_PENDING') {
@@ -195,8 +201,13 @@ async function handleDefault() {
   defaultBtn.disabled = true;
   setStatus(statusEl, '正在使用默认人设…');
   try {
-    await requestJSON('/api/persona/default', { method: 'POST', body: '{}' });
+    const result = await requestJSON('/api/persona/default', { method: 'POST', body: '{}' });
     setStatus(statusEl, '已使用默认人设');
+    document.dispatchEvent(
+      new CustomEvent('niannian:persona-changed', {
+        detail: { personaId: result.persona?.id },
+      }),
+    );
     setTimeout(closeModal, 600);
   } catch (error) {
     setStatus(statusEl, error.message || '操作失败');
@@ -205,7 +216,8 @@ async function handleDefault() {
   }
 }
 
-document.getElementById('persona-open').addEventListener('click', openModal);
+// 顶栏不再放“人设”按钮：新建会话时由 chat.js 派发事件打开
+document.addEventListener('niannian:new-persona', openModal);
 document.getElementById('persona-close').addEventListener('click', closeModal);
 extractBtn.addEventListener('click', handleExtract);
 confirmBtn.addEventListener('click', handleConfirm);

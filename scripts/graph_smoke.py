@@ -81,7 +81,10 @@ async def main() -> None:
             print("=== 分支路由 ===")
             for thread_id, text, expected in CASES:
                 config = {"configurable": {"thread_id": thread_id}}
-                result = await graph.ainvoke(await build_initial_state(text), config)
+                result = await graph.ainvoke(
+                    await build_initial_state(text, thread_id),
+                    config,
+                )
                 branch = result.get("branch")
                 status = "OK  " if branch == expected else "FAIL"
                 print(f"{status} {thread_id:22s} expected={expected:8s} got={branch}")
@@ -90,7 +93,10 @@ async def main() -> None:
 
             print("=== 持久化 ===")
             config = {"configurable": {"thread_id": "u-smoke-safety"}}
-            await graph.ainvoke(await build_initial_state("谢谢"), config)
+            await graph.ainvoke(
+                await build_initial_state("谢谢", "u-smoke-safety"),
+                config,
+            )
             snapshot = await graph.aget_state(config)
             count = len(snapshot.values["messages"])
             print("safety thread messages:", count)

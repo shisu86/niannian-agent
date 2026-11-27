@@ -30,6 +30,11 @@ from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 import app.services.memory as memory  # noqa: E402
 from app.db import connect, init_db, utc_now  # noqa: E402
 from app.graph import nodes  # noqa: E402
+from app.services.persona import (  # noqa: E402
+    create_persona,
+    delete_persona,
+    get_full_persona,
+)
 from app.services.search import search, tokenize  # noqa: E402
 
 # 预置模型返回值：按顺序消费；元素是异常实例时直接抛出
@@ -104,7 +109,7 @@ async def seed_old_memory() -> int:
 
 
 async def case_missing_persona() -> None:
-    """全新库没有 persona 行时，save 应自动补建，而不是外键失败。"""
+    """角色被删后，后台记忆写入应丢弃，而不是把角色重新建出来。"""
     await init_db()
     items = [
         {
@@ -116,7 +121,8 @@ async def case_missing_persona() -> None:
         }
     ]
     saved = await memory.save_memories(1, items)
-    check("missing persona auto-created", saved["written"] == 1, str(saved))
+    check("missing persona skips write", saved["written"] == 0, str(saved))
+    check("missing persona not recreated", await get_full_persona(1) is None)
 
 
 async def case_hostile_types() -> None:
@@ -276,6 +282,64 @@ async def case_reflect_end_to_end() -> None:
     check("reflect end-to-end", result.get("written") == 1, str(result))
 
 
+async def case_cross_persona_replaces() -> None:
+    """一个角色写入的共享事实，另一个角色也能取代。"""
+    person_a = await create_persona({"name": "甲角色", "relation": "朋友"})
+    person_b = await create_persona({"name": "乙角色", "relation": "朋友"})
+    try:
+        await memory.save_memories(
+            person_a["id"],
+            [
+                {
+                    "type": "fact",
+                    "content": "共享事实：住在南京",
+                    "importance": 3,
+                    "due_at": None,
+                    "replaces": [],
+                }
+            ],
+        )
+        conn = await connect()
+        try:
+            row = await (
+                await conn.execute(
+                    "SELECT id FROM memory_item WHERE persona_id = ? AND content LIKE '共享事实%'",
+                    (person_a["id"],),
+                )
+            ).fetchone()
+        finally:
+            await conn.close()
+
+        saved = await memory.save_memories(
+            person_b["id"],
+            [
+                {
+                    "type": "fact",
+                    "content": "共享事实：住在杭州",
+                    "importance": 3,
+                    "due_at": None,
+                    "replaces": [row["id"]],
+                }
+            ],
+        )
+        check("cross persona superseded", saved["superseded"] == 1, str(saved))
+
+        conn = await connect()
+        try:
+            old = await (
+                await conn.execute(
+                    "SELECT status FROM memory_item WHERE id = ?",
+                    (row["id"],),
+                )
+            ).fetchone()
+        finally:
+            await conn.close()
+        check("shared marked superseded", old["status"] == "superseded", old["status"])
+    finally:
+        await delete_persona(person_a["id"])
+        await delete_persona(person_b["id"])
+
+
 async def case_llm_failure_survives() -> None:
     # reflect 会重试一次，所以准备两个异常
     _responses.extend([RuntimeError("boom"), RuntimeError("boom")])
@@ -302,6 +366,7 @@ async def main() -> None:
         await case_naive_due_at()
         await case_crisis_skipped()
         await case_reflect_end_to_end()
+        await case_cross_persona_replaces()
         await case_llm_failure_survives()
     finally:
         shutil.rmtree(_TMP_DIR, ignore_errors=True)

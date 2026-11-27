@@ -1,7 +1,6 @@
 import { requestJSON } from './api.js';
 
 const messagesEl = document.getElementById('messages');
-const emptyEl = document.getElementById('empty');
 const POLL_MS = 30000;
 
 // 服务端读取即标记已读；这里再按 id 去重，防止网络重试造成重复气泡
@@ -10,7 +9,8 @@ let timer = null;
 let polling = false;
 
 function addProactiveBubble(text) {
-  emptyEl?.remove();
+  // 每次现查：切换会话后空占位是新建的节点
+  document.getElementById('empty')?.remove();
 
   const row = document.createElement('div');
   row.className = 'msg ai';
@@ -30,10 +30,20 @@ async function poll() {
   polling = true;
   try {
     const data = await requestJSON('/api/notifications');
-    for (const item of data.items || []) {
+    const items = data.items || [];
+    const currentThread = localStorage.getItem('niannian.thread_id');
+    for (const item of items) {
       if (!item.content || seen.has(item.id)) continue;
       seen.add(item.id);
+      // 其他会话的关怀只标红点，不要插进当前聊天
+      if (item.thread_id && item.thread_id !== currentThread) continue;
       addProactiveBubble(item.content);
+    }
+    if (items.length) {
+      // 让会话列表在对应会话上显示未读红点
+      document.dispatchEvent(
+        new CustomEvent('niannian:notifications', { detail: { items } }),
+      );
     }
   } catch {
     // 轮询失败不打扰用户，下一轮再试

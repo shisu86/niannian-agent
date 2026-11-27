@@ -8,7 +8,7 @@
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from app.db import connect, utc_now
 from app.errors import get_trace_id
@@ -43,17 +43,23 @@ DEFAULT_SETTINGS = {
 
 
 @router.get("/followups", response_model=ApiResponse[dict])
-async def list_followups(request: Request) -> ApiResponse[dict]:
-    """返回所有 active 的待跟进事项，按时间升序。"""
+async def list_followups(
+    request: Request,
+    persona_id: int = Query(default=1, ge=1),
+) -> ApiResponse[dict]:
+    """返回当前角色的待跟进事项，按时间升序。"""
     conn = await connect()
     try:
         async with conn.execute(
             """
             SELECT id, content, due_at, importance, notified_at
             FROM memory_item
-            WHERE persona_id = 1 AND type = 'followup' AND status = 'active'
+            WHERE (persona_id = ? OR scope = 'shared')
+              AND type = 'followup'
+              AND status = 'active'
             ORDER BY due_at ASC, id ASC
-            """
+            """,
+            (persona_id,),
         ) as cursor:
             rows = await cursor.fetchall()
         items = [dict(row) for row in rows]

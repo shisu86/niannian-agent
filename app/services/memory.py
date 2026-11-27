@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from app.config import get_settings
 from app.db import connect, utc_now
 from app.services.llm import complete_json
-from app.services.persona import ensure_persona
+from app.services.persona import get_full_persona
 from app.services.search import tokenize
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,7 @@ async def _recent_memories(persona_id: int) -> list[dict]:
             """
             SELECT id, content
             FROM memory_item
-            WHERE persona_id = ? AND status = 'active'
+            WHERE (persona_id = ? OR scope = 'shared') AND status = 'active'
             ORDER BY created_at DESC, importance DESC
             LIMIT ?
             """,
@@ -231,8 +231,10 @@ async def save_memories(persona_id: int, items: list[dict]) -> dict:
     if not items:
         return {"written": 0, "superseded": 0}
 
-    # 外键前提：全新部署时 init_db 不预插 persona，这里兜底创建
-    await ensure_persona()
+    # 角色已被删除时不能自动重建，否则后台 reflect 会让已删角色复活
+    if await get_full_persona(persona_id) is None:
+        logger.warning("memory save skipped: persona %s missing", persona_id)
+        return {"written": 0, "superseded": 0}
 
     conn = await connect()
     try:
@@ -241,12 +243,14 @@ async def save_memories(persona_id: int, items: list[dict]) -> dict:
         superseded = 0
 
         for item in items:
+            # fact 类（住址/工作/健康）所有角色共享；偏好、关系、情感只属于当前角色
+            scope = "shared" if item["type"] == "fact" else "personal"
             cursor = await conn.execute(
                 """
                 INSERT INTO memory_item
-                  (persona_id, type, content, content_tok, importance, status,
+                  (persona_id, type, content, content_tok, importance, scope, status,
                    due_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
                 """,
                 (
                     persona_id,
@@ -254,6 +258,7 @@ async def save_memories(persona_id: int, items: list[dict]) -> dict:
                     item["content"],
                     tokenize(item["content"]),
                     item["importance"],
+                    scope,
                     item["due_at"],
                     now,
                     now,
@@ -268,11 +273,13 @@ async def save_memories(persona_id: int, items: list[dict]) -> dict:
             )
 
             for old_id in item["replaces"]:
+                # 本角色的专属记忆或其他角色写入的共享事实都可以被取代
                 update = await conn.execute(
                     """
                     UPDATE memory_item
                     SET status = 'superseded', superseded_by = ?, updated_at = ?
-                    WHERE id = ? AND persona_id = ? AND status = 'active'
+                    WHERE id = ? AND status = 'active'
+                      AND (persona_id = ? OR scope = 'shared')
                     """,
                     (new_id, now, old_id, persona_id),
                 )
@@ -288,5 +295,144 @@ async def save_memories(persona_id: int, items: list[dict]) -> dict:
         await conn.rollback()
         logger.exception("memory save failed, rolled back")
         raise
+    finally:
+        await conn.close()
+
+
+async def list_memories(
+    persona_id: int = 1,
+    item_type: str | None = None,
+    status: str = "active",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """分页查询记忆，按创建时间倒序。"""
+    conditions = ["(persona_id = ? OR scope = 'shared')"]
+    params: list = [persona_id]
+    if item_type:
+        conditions.append("type = ?")
+        params.append(item_type)
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    where = " AND ".join(conditions)
+
+    conn = await connect()
+    try:
+        total_row = await (
+            await conn.execute(
+                f"SELECT COUNT(*) FROM memory_item WHERE {where}",  # noqa: S608
+                params,
+            )
+        ).fetchone()
+        async with conn.execute(
+            f"""
+            SELECT id, type, content, importance, scope, status, due_at,
+                   hit_count, created_at, updated_at
+            FROM memory_item
+            WHERE {where}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,  # noqa: S608
+            (*params, limit, offset),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return {
+            "items": [dict(row) for row in rows],
+            "total": total_row[0] if total_row else 0,
+        }
+    finally:
+        await conn.close()
+
+
+async def get_memory(memory_id: int, persona_id: int = 1) -> dict | None:
+    conn = await connect()
+    try:
+        async with conn.execute(
+            """
+            SELECT id, type, content, importance, scope, status, due_at,
+                   hit_count, created_at, updated_at
+            FROM memory_item
+            WHERE id = ? AND (persona_id = ? OR scope = 'shared')
+            """,
+            (memory_id, persona_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+async def update_memory(memory_id: int, patch: dict, persona_id: int = 1) -> dict | None:
+    """更新记忆；内容变化时在同一事务里重建 FTS 行。"""
+    fields = ["updated_at = ?"]
+    params: list = [utc_now()]
+    content_changed = False
+    new_content = ""
+
+    if patch.get("content") is not None:
+        new_content = str(patch["content"]).strip()
+        if not new_content:
+            raise ValueError("content 不能为空")
+        fields.extend(["content = ?", "content_tok = ?"])
+        params.extend([new_content, tokenize(new_content)])
+        content_changed = True
+    if patch.get("importance") is not None:
+        fields.append("importance = ?")
+        params.append(int(patch["importance"]))
+    if "due_at" in patch:
+        fields.append("due_at = ?")
+        params.append(patch["due_at"])
+    if patch.get("status") is not None:
+        fields.append("status = ?")
+        params.append(patch["status"])
+
+    conn = await connect()
+    try:
+        cursor = await conn.execute(
+            f"UPDATE memory_item SET {', '.join(fields)} "  # noqa: S608
+            "WHERE id = ? AND (persona_id = ? OR scope = 'shared')",
+            (*params, memory_id, persona_id),
+        )
+        if cursor.rowcount == 0:
+            await conn.rollback()
+            return None
+
+        if content_changed:
+            await conn.execute("DELETE FROM memory_fts WHERE rowid = ?", (memory_id,))
+            await conn.execute(
+                "INSERT INTO memory_fts(rowid, content_tok) VALUES (?, ?)",
+                (memory_id, tokenize(new_content)),
+            )
+        await conn.commit()
+
+        async with conn.execute(
+            """
+            SELECT id, type, content, importance, scope, status, due_at,
+                   hit_count, created_at, updated_at
+            FROM memory_item WHERE id = ?
+            """,
+            (memory_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+async def delete_memory(memory_id: int, persona_id: int = 1) -> bool:
+    """删除记忆并同步删除 FTS 行；两步在同一个事务里。"""
+    conn = await connect()
+    try:
+        cursor = await conn.execute(
+            "DELETE FROM memory_item WHERE id = ? AND (persona_id = ? OR scope = 'shared')",
+            (memory_id, persona_id),
+        )
+        if cursor.rowcount == 0:
+            await conn.rollback()
+            return False
+        await conn.execute("DELETE FROM memory_fts WHERE rowid = ?", (memory_id,))
+        await conn.commit()
+        return True
     finally:
         await conn.close()

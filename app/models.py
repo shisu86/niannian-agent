@@ -95,6 +95,26 @@ class PersonaPayload(BaseModel):
 VOICE_PATTERN = r"^[a-z]{2,}-[A-Z]{2,}-[A-Za-z0-9-]+Neural$"
 
 
+class SessionRegisterRequest(BaseModel):
+    """前端注册会话：线程 id + 绑定的角色。"""
+
+    thread_id: str = Field(
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]{8,64}$",
+    )
+    persona_id: int = Field(default=1, ge=1)
+
+
+class MemoryPatch(BaseModel):
+    """记忆编辑；内容变更时会同步重建 FTS 行。"""
+
+    content: str | None = Field(default=None, max_length=1000)
+    importance: int | None = Field(default=None, ge=1, le=5)
+    due_at: str | None = None
+    status: Literal["active", "completed", "expired"] | None = None
+
+
 class TTSRequest(BaseModel):
     """语音合成请求；rate/pitch/volume 显式传入时覆盖情绪映射。"""
 
@@ -135,7 +155,10 @@ class SettingsPayload(BaseModel):
 
 
 class PersonaConfirmRequest(BaseModel):
-    """确认人设：persona_thread_id 由 extract 接口返回。"""
+    """确认人设：persona_thread_id 由 extract 接口返回。
+
+    persona_id 为空表示新建角色；有值表示更新该角色。
+    """
 
     persona_thread_id: str = Field(
         min_length=3,
@@ -143,3 +166,4 @@ class PersonaConfirmRequest(BaseModel):
         pattern=r"^p-[A-Za-z0-9]{4,32}$",
     )
     persona: PersonaPayload
+    persona_id: int | None = Field(default=None, ge=1)

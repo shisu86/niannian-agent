@@ -81,11 +81,12 @@ async def _query_fts(
 ) -> list[dict]:
     sql = """
         SELECT m.id, m.type, m.content, m.importance, m.status, m.created_at,
-               bm25(memory_fts) AS rank
+               m.hit_count, bm25(memory_fts) AS rank
         FROM memory_fts
         JOIN memory_item m ON m.id = memory_fts.rowid
         WHERE memory_fts MATCH ?
-          AND m.persona_id = ?
+          -- 本角色的专属记忆 + 所有角色共享的基础事实
+          AND (m.persona_id = ? OR m.scope = 'shared')
           AND m.status = 'active'
         ORDER BY rank
         LIMIT ?

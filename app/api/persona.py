@@ -21,11 +21,22 @@ from app.models import (
     PersonaExtractRequest,
     PersonaPayload,
 )
-from app.services.persona import ensure_persona, get_full_persona, save_persona
+from app.services.conversation import delete_conversation, list_conversations
+from app.services.persona import (
+    create_persona,
+    delete_persona,
+    ensure_persona,
+    get_full_persona,
+    list_personas,
+    update_persona,
+)
+from app.services.session import clear_current_thread
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/persona", tags=["persona"])
+# 多角色管理单独一组路由：/api/personas
+personas_router = APIRouter(prefix="/api/personas", tags=["persona"])
 
 # 人设确认有效期：超过后需要重新提取
 PENDING_TTL_SECONDS = 30 * 60
@@ -149,7 +160,15 @@ async def confirm(
             raise AppError("INTERRUPT_NOT_PENDING", "人设确认已失效，请重新提取", status=409)
 
         try:
-            await graph.ainvoke(Command(resume=payload.persona.model_dump()), config)
+            await graph.ainvoke(
+                Command(
+                    resume={
+                        "persona": payload.persona.model_dump(),
+                        "persona_id": payload.persona_id,
+                    }
+                ),
+                config,
+            )
         except Exception as exc:
             # 写库失败：清掉 pending，要求重新提取，避免用旧 state 重试
             _pending.pop(thread_id, None)
@@ -195,10 +214,59 @@ async def get_persona_api(request: Request) -> ApiResponse[dict]:
 
 
 @router.put("", response_model=ApiResponse[dict])
-async def update_persona(payload: PersonaPayload, request: Request) -> ApiResponse[dict]:
-    """直接编辑人设（确认弹窗之外的手动修改也走这里）。"""
-    persona = await save_persona(payload.model_dump())
+async def update_default_persona(payload: PersonaPayload, request: Request) -> ApiResponse[dict]:
+    """直接编辑默认角色（id=1），保留旧接口兼容。"""
+    persona = await update_persona(1, payload.model_dump())
+    if persona is None:
+        persona = await create_persona(payload.model_dump())
     return ApiResponse(
         data={"persona": persona, "version": persona.get("version")},
         trace_id=get_trace_id(request),
     )
+
+
+@personas_router.get("", response_model=ApiResponse[dict])
+async def list_personas_api(request: Request) -> ApiResponse[dict]:
+    """所有角色列表；为空时返回空数组，由前端引导用户新建。"""
+    items = await list_personas()
+    return ApiResponse(data={"items": items}, trace_id=get_trace_id(request))
+
+
+@personas_router.post("", response_model=ApiResponse[dict])
+async def create_persona_api(
+    payload: PersonaPayload,
+    request: Request,
+) -> ApiResponse[dict]:
+    persona = await create_persona(payload.model_dump())
+    return ApiResponse(data={"persona": persona}, trace_id=get_trace_id(request))
+
+
+@personas_router.put("/{persona_id}", response_model=ApiResponse[dict])
+async def update_persona_api(
+    persona_id: int,
+    payload: PersonaPayload,
+    request: Request,
+) -> ApiResponse[dict]:
+    persona = await update_persona(persona_id, payload.model_dump())
+    if persona is None:
+        raise AppError("NOT_FOUND", "角色不存在", status=404)
+    return ApiResponse(data={"persona": persona}, trace_id=get_trace_id(request))
+
+
+@personas_router.delete("/{persona_id}", response_model=ApiResponse[dict])
+async def delete_persona_api(persona_id: int, request: Request) -> ApiResponse[dict]:
+    # 先把角色名下会话的 checkpoint、通知和当前线程引用清干净
+    conversations = await list_conversations(persona_id)
+    checkpointer = request.app.state.checkpointer
+    for item in conversations:
+        thread_id = item["thread_id"]
+        try:
+            await checkpointer.adelete_thread(thread_id)
+        except Exception:
+            logger.exception("delete thread failed: %s", thread_id)
+        await delete_conversation(thread_id)
+        clear_current_thread(thread_id)
+
+    if not await delete_persona(persona_id):
+        raise AppError("NOT_FOUND", "角色不存在", status=404)
+    return ApiResponse(data={"deleted": persona_id}, trace_id=get_trace_id(request))

@@ -29,6 +29,7 @@ import app.services.proactive as proactive  # noqa: E402
 from app.db import connect, init_db, utc_now  # noqa: E402
 from app.services.persona import ensure_persona  # noqa: E402
 from app.services.search import tokenize  # noqa: E402
+from app.services.session import set_current_thread  # noqa: E402
 
 LOCAL = ZoneInfo("Asia/Shanghai")
 failures: list[str] = []
@@ -152,6 +153,8 @@ async def case_settings_missing() -> None:
 async def main() -> None:
     case_quiet_boundary()
     await init_db()
+    # 主动关怀要求存在当前会话，测试里注册一个
+    set_current_thread("proactive-smoke-1")
     memory_id = await _seed_followup("2026-11-26T02:00:00Z")  # 本地 10:00，已过
 
     async def fake_compose(memory: dict) -> str:

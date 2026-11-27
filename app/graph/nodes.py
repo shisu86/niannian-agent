@@ -287,7 +287,7 @@ async def retrieve(state: AgentState) -> dict:
 
     try:
         hits = await search(
-            persona_id=1,  # 单用户单 Agent，固定 id=1
+            persona_id=int(state.get("persona_id") or 1),
             queries=state.get("queries") or [],
         )
     except Exception:
@@ -420,7 +420,7 @@ async def generate(state: AgentState) -> dict:
     }
 
 
-async def reflect(messages: list, branch: str) -> dict:
+async def reflect(messages: list, branch: str, persona_id: int = 1) -> dict:
     """从一轮对话中抽取长期记忆（图外异步任务）。
 
     图在 generate 之后立即结束，抽取不再写会话 checkpoint，
@@ -443,11 +443,11 @@ async def reflect(messages: list, branch: str) -> dict:
         for attempt in range(2):  # 文档约定：失败重试一次，仍失败只记日志
             try:
                 items = await extract_memories(
-                    persona_id=1,
+                    persona_id=persona_id,
                     user_text=user_text,
                     ai_text=ai_text,
                 )
-                saved = await save_memories(persona_id=1, items=items)
+                saved = await save_memories(persona_id=persona_id, items=items)
                 result = {"extracted": len(items), **saved}
                 logger.info(
                     "reflect done extracted=%s written=%s superseded=%s",

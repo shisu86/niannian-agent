@@ -8,37 +8,115 @@
 </head>
 <body>
   <main class="app">
-    <header class="topbar">
-      <div class="brand">
+    <!-- 左侧：会话列表 -->
+    <aside class="sidebar sidebar-left">
+      <div class="brand brand-side">
         <div class="logo" aria-hidden="true">念</div>
         <div>
           <h1>念念</h1>
           <p>陪伴，从记得开始</p>
         </div>
       </div>
-      <div class="topbar-right">
-        <!-- AI 身份必须常驻可见，避免用户误以为是真人 -->
-        <span class="badge">AI 扮演</span>
-        <select id="voice-select" class="voice-select" aria-label="朗读音色"></select>
-        <button type="button" class="ghost small" id="mic">语音</button>
-        <button type="button" class="ghost small" id="speak-toggle" aria-pressed="false">朗读</button>
-        <button type="button" class="ghost small" id="persona-open">人设</button>
+      <input id="session-search" class="session-search" placeholder="搜索对话" maxlength="40">
+      <button type="button" class="ghost small session-new" id="session-new">＋ 新会话</button>
+      <nav id="session-list" class="session-list" aria-label="会话列表"></nav>
+      <div class="side-persona">
+        <p class="hint">当前人设</p>
+        <p id="left-persona-name">念念</p>
       </div>
-    </header>
+    </aside>
 
-    <section id="messages" class="messages" aria-live="polite">
-      <div class="empty" id="empty">
-        <p>今天想聊点什么？</p>
-        <p class="hint">我会记得你说过的事。</p>
-      </div>
+    <!-- 中间：聊天 -->
+    <section class="chat">
+      <header class="topbar">
+        <div class="chat-title">
+          <div class="chat-title-row">
+            <span id="chat-avatar" class="chat-avatar">念</span>
+            <h2 id="chat-title">新会话</h2>
+            <!-- AI 身份必须常驻可见，避免用户误以为是真人 -->
+            <span class="badge">AI 扮演</span>
+          </div>
+          <p class="hint" id="chat-subtitle">我会记得你说过的事</p>
+        </div>
+        <div class="topbar-right">
+          <label class="pill">
+            音色
+            <select id="voice-select" class="voice-select" aria-label="朗读音色"></select>
+          </label>
+          <button type="button" class="pill" id="care-pill">关怀 · 22:00-08:00 安静</button>
+          <button type="button" class="icon-btn" id="memories-open" aria-label="记忆与设置">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8.92 4.6 1.65 1.65 0 0 0 9.93 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section id="messages" class="messages" aria-live="polite">
+        <div class="empty" id="empty">
+          <p>今天想聊点什么？</p>
+          <p class="hint">我会记得你说过的事。</p>
+        </div>
+      </section>
+
+      <form id="composer" class="composer">
+        <textarea id="input" rows="1" maxlength="2000" placeholder="说点什么…"></textarea>
+        <div class="composer-tools">
+          <button type="button" class="ghost small" id="mic">语音输入</button>
+          <button type="button" class="ghost small" id="speak-toggle" aria-pressed="false">语音回复</button>
+          <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+          <button type="submit" id="send">发送</button>
+        </div>
+      </form>
+      <p id="status" class="status" role="status"></p>
+      <p id="voice-status" class="status" role="status"></p>
     </section>
 
-    <form id="composer" class="composer">
-      <textarea id="input" rows="1" maxlength="2000" placeholder="说点什么…"></textarea>
-      <button type="submit" id="send">发送</button>
-    </form>
-    <p id="status" class="status" role="status"></p>
-    <p id="voice-status" class="status" role="status"></p>
+    <!-- 右侧：本轮记忆与开发者视图 -->
+    <aside class="sidebar sidebar-right">
+      <section class="panel memory-panel">
+        <div class="panel-head">
+          <h3>这次想起了…</h3>
+          <span id="memory-count" class="memory-count">0 件事</span>
+        </div>
+        <p class="hint">它根据这些记忆，决定怎么回应你</p>
+        <p class="section-label">被想起的事</p>
+        <div id="memory-context" class="memory-context">
+          <p class="hint">还没有检索记录。</p>
+        </div>
+      </section>
+
+      <details class="dev-box" id="dev-box">
+        <summary>
+          <span class="dev-icon">⚙</span>
+          <span class="dev-title">开发者视图</span>
+          <span id="dev-summary" class="dev-summary">分支 · token · 耗时</span>
+          <span class="dev-arrow">▸</span>
+        </summary>
+        <dl id="dev-panel" class="dev-panel">
+          <div><dt>分支</dt><dd id="dev-branch">-</dd></div>
+          <div><dt>情绪</dt><dd id="dev-emotion">-</dd></div>
+          <div><dt>耗时</dt><dd id="dev-elapsed">-</dd></div>
+          <div><dt>token</dt><dd id="dev-tokens">-</dd></div>
+          <div><dt>检索词</dt><dd id="dev-queries">-</dd></div>
+        </dl>
+      </details>
+
+      <section class="panel persona-panel">
+        <div class="persona-head">
+          <span id="persona-card-avatar" class="persona-avatar">念</span>
+          <div>
+            <p id="persona-card-name" class="persona-name">念念</p>
+            <p id="persona-card-relation" class="hint">朋友</p>
+          </div>
+        </div>
+        <p id="persona-card-summary" class="persona-summary"></p>
+        <div id="persona-card-catchphrases" class="chips"></div>
+      </section>
+    </aside>
   </main>
 
   <!-- 人设弹窗：粘贴对话 → 提取 → 确认，对应后端的 interrupt 流程 -->
@@ -88,9 +166,109 @@
     </div>
   </div>
 
+  <!-- 新建会话时的角色选择 -->
+  <div id="persona-picker" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+      <header class="modal-head">
+        <h2 id="picker-title">选择聊天对象</h2>
+        <button type="button" class="ghost small" id="picker-close" aria-label="关闭">×</button>
+      </header>
+      <div id="picker-list" class="picker-list"></div>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="picker-new">＋ 新建角色</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新建角色：先建空角色，之后可慢慢补充 -->
+  <div id="role-create-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="role-create-title">
+      <header class="modal-head">
+        <h2 id="role-create-title">新建角色</h2>
+        <button type="button" class="ghost small" id="role-create-close" aria-label="关闭">×</button>
+      </header>
+      <label>名字<input id="role-name" maxlength="20" placeholder="例如：小胖"></label>
+      <label>关系<input id="role-relation" maxlength="20" placeholder="例如：朋友"></label>
+      <p class="hint">先建一个空白角色也可以，之后在聊天里慢慢补充。</p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="role-create-advanced">从对话提取人设</button>
+        <button type="button" id="role-create-submit">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 记忆与待跟进抽屉 -->
+  <div id="memories-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="memories-title">
+      <header class="modal-head">
+        <h2 id="memories-title">记忆与待跟进</h2>
+        <button type="button" class="ghost small" id="memories-close" aria-label="关闭">×</button>
+      </header>
+      <div class="tabs">
+        <button type="button" class="tab active" id="tab-memories">记忆</button>
+        <button type="button" class="tab" id="tab-followups">待跟进</button>
+        <button type="button" class="tab" id="tab-settings">设置</button>
+      </div>
+      <div id="memories-list" class="memory-list"></div>
+      <div id="followups-list" class="memory-list" hidden></div>
+
+      <div id="settings-panel" class="settings-panel" hidden>
+        <label>主动关怀
+          <select id="set-proactive">
+            <option value="1">开启</option>
+            <option value="0">关闭</option>
+          </select>
+        </label>
+        <div class="row">
+          <label>免打扰开始<input id="set-quiet-start" maxlength="5" placeholder="22:00"></label>
+          <label>免打扰结束<input id="set-quiet-end" maxlength="5" placeholder="08:00"></label>
+        </div>
+        <div class="row">
+          <label>每日上限
+            <select id="set-daily-limit">
+              <option value="0">0 条</option>
+              <option value="1">1 条</option>
+              <option value="2">2 条</option>
+              <option value="3">3 条</option>
+              <option value="4">4 条</option>
+              <option value="5">5 条</option>
+            </select>
+          </label>
+          <label>低情绪暂停
+            <select id="set-low-mood">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+        </div>
+        <label>朗读音色<input id="set-voice" maxlength="64" placeholder="zh-CN-XiaoxiaoNeural"></label>
+        <div class="row">
+          <label>自动朗读
+            <select id="set-auto-read">
+              <option value="0">关闭</option>
+              <option value="1">开启</option>
+            </select>
+          </label>
+          <label>语音输入
+            <select id="set-asr">
+              <option value="1">开启</option>
+              <option value="0">关闭</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="settings-save">保存设置</button>
+        </div>
+      </div>
+
+      <p id="memories-status" class="status" role="status"></p>
+    </div>
+  </div>
+
   <script type="module" src="/js/chat.js"></script>
   <script type="module" src="/js/persona.js"></script>
   <script type="module" src="/js/proactive.js"></script>
   <script type="module" src="/js/voice.js"></script>
+  <script type="module" src="/js/memories.js"></script>
 </body>
 </html>
